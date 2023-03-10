@@ -11,23 +11,15 @@ namespace MmseqsHelperLib
     {
         private readonly ILogger<MmseqsHelper> _logger;
 
-        public MmseqsHelper(AutoMmseqsSettings? inputSettings = null, ILogger<MmseqsHelper> logger = null)
+        public MmseqsHelper(AutoMmseqsSettings? inputSettings, ILogger<MmseqsHelper> logger)
         {
             _logger = logger;
             Settings = inputSettings ?? GetDefaultSettings();
-        }
 
-        public AutoMmseqsSettings Settings { get; set; }
-
-        public string MmseqsBinaryPath => Settings.MmseqsBinaryPath;
-
-
-        public async Task AutoProcessFastaWithAutoIdFromSequenceForAlphaFoldAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> existingDatabasePaths, string outputPath)
-        {
             #region HardcodedSetup
             const string colabFold_SearchParamsShared = @"--num-iterations 3 -a -s 8 -e 0.1 --max-seqs 10000";
             Settings.Custom.Add("colabFold_SearchParamsShared", colabFold_SearchParamsShared);
-            
+
             const string colabFold_ExpandParamsUnirefMono =
                 @"--expansion-mode 0 -e inf --expand-filter-clusters 1 --max-seq-id 0.95";
             Settings.Custom.Add("colabFold_ExpandParamsUnirefMono", colabFold_ExpandParamsUnirefMono);
@@ -37,16 +29,16 @@ namespace MmseqsHelperLib
             const string colabFold_ExpandParamsEnvMono =
                 @"--expansion-mode 0 -e inf";
             Settings.Custom.Add("colabFold_ExpandParamsEnvMono", colabFold_ExpandParamsEnvMono);
-            
+
             const string colabFold_FilterParams =
                 @"--qid 0 --qsc 0.8 --diff 0 --max-seq-id 1.0 --filter-min-enable 100";
             Settings.Custom.Add("colabFold_FilterParams", colabFold_FilterParams);
-            
+
             const string colabFold_AlignParamsMono = @"-e 10  --max-accept 1000000 --alt-ali 10 -a";
             Settings.Custom.Add("colabFold_AlignParamsMono", colabFold_AlignParamsMono);
             const string colabFold_AlignParamsPair = @"-e 0.001  --max-accept 1000000 -c 0.5 --cov-mode 1 -a";
             Settings.Custom.Add("colabFold_AlignParamsPair", colabFold_AlignParamsPair);
-            
+
             const string colabFold_MsaConvertParamsMono = @"--msa-format-mode 6 --filter-msa 1 --filter-min-enable 1000 --diff 3000 --qid '0.0,0.2,0.4,0.6,0.8,1.0' --qsc 0 --max-seq-id 0.95";
             Settings.Custom.Add("colabFold_MsaConvertParamsMono", colabFold_MsaConvertParamsMono);
             const string colabFold_MsaConvertParamsPair = @"--msa-format-mode 5";
@@ -56,57 +48,95 @@ namespace MmseqsHelperLib
             Settings.Custom.Add("performanceParams", performanceParams);
             #endregion
 
-            var (existingRes, missingRes) = await GetExistingAndMissingSetsAsync(inputFastaPaths, existingDatabasePaths);
+
+        }
+
+        public AutoMmseqsSettings Settings { get; set; }
+
+        public string MmseqsBinaryPath => Settings.MmseqsBinaryPath;
+
+
+        public async Task AutoCreateColabfoldMonoDbsFromFastasAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> existingDatabasePaths, IEnumerable<string> excludedIds, string outputPath)
+        {
+            var excludedIdList = excludedIds.ToList();
+            var (existingTargets, missingTargets) = await GetExistingAndMissingSetsAsync(inputFastaPaths, existingDatabasePaths, excludedIdList);
             
-            var batches = GetBatches(missingRes);
+            var batches = GetBatches(missingTargets);
                         
             foreach (var proteinBatch in batches)
             {
-                var batchIdBase = Guid.NewGuid().ToString();
-                var batchId = $"{batchIdBase}";
-
-                var workingDir = Path.Join(Settings.TempPath, batchId);
-                Directory.CreateDirectory(workingDir);
-
-                //*******************************************create source fasta file*******************************************************
-                var fastaName = $"input{Settings.FastaSuffix}";
-                var queryFastaPath = Path.Join(workingDir, fastaName);
-                using (var fastaFileOutputStream = File.Create(queryFastaPath))
-                {
-                    await foreach (var fastaChunk in FastaHelper.GenerateMultiFastaDataAsync(proteinBatch))
-                    {
-                        await fastaFileOutputStream.WriteAsync(Encoding.ASCII.GetBytes(fastaChunk));
-                    }
-                }
-
-                //*******************************************create query db file*******************************************************
-                var qdbNameBase = $"{Settings.QdbSuffix}";
-                var qdbPath = Path.Join(workingDir, qdbNameBase);
-
-                var createDbParameters = new CreateDbParameters();
-                createDbParameters.ApplyDefaults();
-                await CreateDbAsync(queryFastaPath, qdbPath, createDbParameters);
-
-                //*******************************************initial uniprot search to get search & profile dbs****************************
-                var (searchDb, profileDb) = await Task.Run(() => AutoUniprotSearchAndProfileAsync(workingDir, qdbPath));
-                
-                //*******************************************calc mono and pair dbs*******************************************************
-                var uniprotMonoTask = Task.Run(() => AutoUniprotMonoLineAsync(workingDir, qdbPath, searchDb, profileDb));
-                var uniprotPairTask = Task.Run(() => AutoUniprotPairLineAsync(workingDir, qdbPath, searchDb));
-                var envDbMonoTask = Task.Run(()=> AutoEnvDbLineAsync(workingDir, qdbPath, profileDb));
-
-                await Task.WhenAll(uniprotMonoTask, uniprotPairTask, envDbMonoTask);
-
-                var monoDbPath = uniprotMonoTask.Result;
-                var pairDbPath = uniprotPairTask.Result;
-                var envDbPath = envDbMonoTask.Result;
-
-                (string mergedMonoResult, string pairDbResult) = await AutoFinalResultsAsync(workingDir, qdbPath, monoDbPath, pairDbPath, envDbPath);
-                
+                await AutoProcessProteinBatch(outputPath, proteinBatch);
             }
         }
 
-        private async Task<(string searchDb, string profileDb)> AutoUniprotSearchAndProfileAsync(string workingDir, string qdbPath)
+        private async Task AutoProcessProteinBatch(string outputPath, List<Protein> proteinBatch)
+        {
+            var batchId = Guid.NewGuid().ToString();
+
+            var workingDir = Path.Join(Settings.TempPath, batchId);
+            Directory.CreateDirectory(workingDir);
+
+            LogSomething($"starting batch {batchId} with {proteinBatch.Count} items");
+
+            //*******************************************create source fasta file*******************************************************
+            var fastaName = $"input{Settings.FastaSuffix}";
+            var queryFastaPath = Path.Join(workingDir, fastaName);
+            using (var fastaFileOutputStream = File.Create(queryFastaPath))
+            {
+                await foreach (var fastaChunk in FastaHelper.GenerateMultiFastaDataAsync(proteinBatch))
+                {
+                    await fastaFileOutputStream.WriteAsync(Encoding.ASCII.GetBytes(fastaChunk));
+                }
+            }
+
+            //*******************************************create query db file*******************************************************
+            var qdbNameBase = $"{Settings.QdbName}";
+            var qdbPath = Path.Join(workingDir, qdbNameBase);
+
+            var createDbParameters = new CreateDbParameters();
+            createDbParameters.ApplyDefaults();
+            await CreateDbAsync(queryFastaPath, qdbPath, createDbParameters);
+
+            //*******************************************initial uniprot search to get search & profile dbs****************************
+            var (searchDb, profileDb) = await Task.Run(() => AutoUniprotSearchAndCreateProfileAsync(workingDir, qdbPath));
+
+            //*******************************************calc mono and pair dbs*******************************************************
+            var uniprotMonoTask = Task.Run(() => AutoUniprotCreateMonoDbAsync(workingDir, qdbPath, searchDb, profileDb));
+            var uniprotPairTask = Task.Run(() => AutoUniprotCreateAlignDbForPairAsync(workingDir, qdbPath, searchDb));
+            var envDbMonoTask = Task.Run(() => AutoEnvDbCreateMonoDbAsync(workingDir, qdbPath, profileDb));
+
+            await Task.WhenAll(uniprotMonoTask, uniprotPairTask, envDbMonoTask);
+
+
+            //*******************************************merge the mono dbs*******************************************************
+            var monoDbPath = uniprotMonoTask.Result;
+            var pairDbPath = uniprotPairTask.Result;
+            var envDbPath = envDbMonoTask.Result;
+
+            var mergeMonoDbPath = await AutoMergeMonoDbsAsync(workingDir, qdbPath, monoDbPath, envDbPath);
+
+
+            //*******************************************move the result  files to final output*************************************
+            var finalPathQdb = Path.Join(outputPath, batchId, Settings.QdbName);
+            var finalPathMonos = Path.Join(outputPath, batchId, Settings.MonoModeResultDbName);
+            var finalPathPair = Path.Join(outputPath, batchId, Settings.PairModeFirstAlignDbName);
+
+            var copyTasks = new List<Task>()
+            {
+                CopyDatabaseAsync(qdbPath, finalPathQdb),
+                CopyDatabaseAsync(mergeMonoDbPath, finalPathMonos),
+                CopyDatabaseAsync(pairDbPath, finalPathPair),
+            };
+
+            await Task.WhenAll(copyTasks);
+
+
+            LogSomething(finalPathQdb);
+            LogSomething(finalPathMonos);
+            LogSomething(finalPathPair);
+        }
+
+        private async Task<(string searchDb, string profileDb)> AutoUniprotSearchAndCreateProfileAsync(string workingDir, string qdbPath)
         {
             //*******************************************search*******************************************************
             const string searchModule = @"search";
@@ -138,30 +168,40 @@ namespace MmseqsHelperLib
 
         }
 
-        private async Task<(string mergedMonoResult, string pairDbResult)> AutoFinalResultsAsync(string workingDir, string qdbPath, string uniprotMonoDb, string uniprotPairDb, string envDbMonoDb)
+        private async Task<string> AutoMergeMonoDbsAsync(string workingDir, string qdb, string uniprotMonoDb, string envDbMonoDb)
         {
             var localProcessingPath = Path.Join(workingDir, "final");
+            Directory.CreateDirectory(localProcessingPath);
 
             //*******************************************merge the mono dbs*******************************************************
             const string mergeModule = @"mergedbs";
-            var mergeMonoResultDb = Path.Join(localProcessingPath, $"final_mono.a3m");
+            var mergeMonoResultDb = Path.Join(localProcessingPath, Settings.MonoModeResultDbName); 
             var mergePosParams = new List<string>()
             {
-                qdbPath,
+                qdb,
                 mergeMonoResultDb,
                 uniprotMonoDb,
                 envDbMonoDb
             };
             await RunMmseqsAsync(mergeModule, mergePosParams, String.Empty);
 
-            //*******************************************move the result  files to final output*************************************
 
+            return mergeMonoResultDb;
 
-
-            return (mergeMonoResultDb, uniprotPairDb);
         }
 
-        private async Task<string> AutoEnvDbLineAsync(string workingDir, string qdbPath, string profileResultDb)
+        private async Task CopyDatabaseAsync(string sourceDbPathWithDatabaseRootName, string targetDbPathWithDatabaseRootName)
+        {
+            var sourceDir = Path.GetDirectoryName(sourceDbPathWithDatabaseRootName) ?? String.Empty;
+            var sourceDb = Path.GetFileName(sourceDbPathWithDatabaseRootName);
+
+            var targetDir = Path.GetDirectoryName(targetDbPathWithDatabaseRootName) ?? String.Empty;
+            var targetDb = Path.GetFileName(targetDbPathWithDatabaseRootName);
+
+            await CopyDatabaseAsync(sourceDb, targetDb, sourceDir, targetDir);
+        }
+
+        private async Task<string> AutoEnvDbCreateMonoDbAsync(string workingDir, string qdbPath, string profileResultDb)
         {
             var localProcessingPath = Path.Join(workingDir, "env_mono");
             Directory.CreateDirectory(localProcessingPath);
@@ -236,7 +276,7 @@ namespace MmseqsHelperLib
             return msaConvertResultDb;
         }
 
-        private async Task<string> AutoUniprotMonoLineAsync(string workingDir, string qdbPath, string searchResultDb, string profileResultDb)
+        private async Task<string> AutoUniprotCreateMonoDbAsync(string workingDir, string qdbPath, string searchResultDb, string profileResultDb)
         {
             var localProcessingPath = Path.Join(workingDir, "uniprot_mono");
             Directory.CreateDirectory(localProcessingPath);
@@ -297,7 +337,7 @@ namespace MmseqsHelperLib
 
         }
 
-        private async Task<string> AutoUniprotPairLineAsync(string workingDir, string qdbPath, string searchResultDb)
+        private async Task<string> AutoUniprotCreateAlignDbForPairAsync(string workingDir, string qdbPath, string searchResultDb)
         {
             var localProcessingPath = Path.Join(workingDir, "uniprot_pair");
             Directory.CreateDirectory(localProcessingPath);
@@ -321,7 +361,7 @@ namespace MmseqsHelperLib
             //*******************************************align*******************************************************
             const string alignModule = @"align";
 
-            var alignResultDb = Path.Join(localProcessingPath, $"align");
+            var alignResultDb = Path.Join(localProcessingPath, Settings.PairModeFirstAlignDbName);
             var alignPosParams = new List<string>()
             {
                 qdbPath,
@@ -332,7 +372,7 @@ namespace MmseqsHelperLib
             };
             await RunMmseqsAsync(alignModule, alignPosParams, $"{Settings.Custom["colabFold_AlignParamsPair"]} {Settings.Custom["performanceParams"]}");
             
-            return "alignResultDb";
+            return alignResultDb;
         }
 
         private async Task CreateDbAsync(string queryFastaPath, string outputDbNameBase, CreateDbParameters createDbParameters)
@@ -340,9 +380,9 @@ namespace MmseqsHelperLib
             await CreateDbAsync(new List<String> { queryFastaPath }, outputDbNameBase, createDbParameters);
         }
 
-        private List<List<Protein>> GetBatches(List<Protein> missingRes)
+        private List<List<Protein>> GetBatches(List<Protein> proteins)
         {
-            var batchCount = 1 + (missingRes.Count - 1) / Settings.MaxDesiredBatchSize ;
+            var batchCount = 1 + (proteins.Count - 1) / Settings.MaxDesiredBatchSize ;
 
             var batches = new List<List<Protein>>();
 
@@ -350,11 +390,11 @@ namespace MmseqsHelperLib
             var rng = new Random();
             var counter = 0;
             var tempList = new List<Protein>();
-            foreach (var protein in missingRes.OrderBy(x=> rng.Next()))
+            foreach (var protein in proteins.OrderBy(x=> rng.Next()))
             {
                 tempList.Add(protein);
                 counter++;
-                if (counter == batchCount)
+                if (counter == Settings.MaxDesiredBatchSize)
                 {
                     batches.Add(tempList);
                     tempList.Clear();
@@ -375,6 +415,7 @@ namespace MmseqsHelperLib
         {
             public override bool Equals(Protein? x, Protein? y)
             {
+                if (x == null || y == null) return false;
                 return x.Id.Equals(y.Id, StringComparison.InvariantCulture);
             }
 
@@ -384,10 +425,12 @@ namespace MmseqsHelperLib
             }
         }
 
-        private async Task<(List<Protein> existing,List<Protein> missing)> GetExistingAndMissingSetsAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> existingDatabasePaths)
+        private async Task<(List<Protein> existing,List<Protein> missing)> GetExistingAndMissingSetsAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> existingDatabasePaths, IEnumerable<string> excludeIds)
         {
             var uniqueInputFastaEntries = new HashSet<Protein>(new ProteinByIdComparer());
-            
+
+            var excludedList = excludeIds.ToList();
+
             foreach (var inputFastaPath in inputFastaPaths)
             {
                 var stream = File.OpenRead(inputFastaPath);
@@ -397,8 +440,12 @@ namespace MmseqsHelperLib
                     foreach (var fastaEntry in fastas)
                     {
                         var protein = new Protein()
-                            { Id = GetMd5Hash(fastaEntry.Sequence), Sequence = fastaEntry.Sequence };
-                        uniqueInputFastaEntries.Add(protein);
+                            { Id = Helper.GetMd5Hash(fastaEntry.Sequence), Sequence = fastaEntry.Sequence };
+                        if (!excludedList.Contains(protein.Id))
+                        {
+                            uniqueInputFastaEntries.Add(protein);
+                        }
+                        
                     }
                 }
             }
@@ -406,7 +453,7 @@ namespace MmseqsHelperLib
             var existing = new List<Protein>();
 
             var useExistingImplemented = false;
-            if (false)
+            if (useExistingImplemented)
             {
                 foreach (var existingDatabasePath in existingDatabasePaths)
                 {
@@ -416,7 +463,7 @@ namespace MmseqsHelperLib
 
                     var qdbSets = new List<(string data, string dataIndex, string header, string headerIndex)>();
                     var indexFiles = filesInThisPath.Where(x =>
-                        x.EndsWith($"{ Settings.QdbSuffix}${Settings.Mmseqs2Internal_DbHeaderSuffix}"));
+                        x.EndsWith($"{Settings.QdbName}${Settings.Mmseqs2Internal_DbHeaderSuffix}"));
                 }
 
             }
@@ -455,9 +502,11 @@ namespace MmseqsHelperLib
             var processArgumentsString = $"{mmseqsModule} {positionalArgumentsString} {nonPositionalParametersString}";
 
             LogSomething($"{fullFilePath} {processArgumentsString}");
+#if DEBUG 
             return;
+#endif
 
-            var exitCode = await RunProcessAsync(fullFilePath, processArgumentsString);
+            var exitCode = await Helper.RunProcessAsync(fullFilePath, processArgumentsString);
             
             const int successExit = 0;
             if (exitCode != successExit)
@@ -467,7 +516,8 @@ namespace MmseqsHelperLib
 
         private void LogSomething(string s)
         {
-            Console.WriteLine(s);
+            // var timeStamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            // Console.WriteLine($"[{timeStamp}]: {s}");
             _logger?.LogInformation(s);
         }
 
@@ -479,129 +529,46 @@ namespace MmseqsHelperLib
         private static bool HasWhitespace(string input) => input.Any(x => Char.IsWhiteSpace(x));
         private static bool IsQuoted(string input) => input.Length > 2 && input.First() == '"' && input.Last() == '"';
 
+        
 
-        private string GetMd5Hash(string source)
+        public async Task CopyDatabaseAsync(string sourceDbNameBase, string targetDbNameBase, string sourceFolder, string destinationFolder)
         {
-            using System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create();
-
-            var inputBytes = Encoding.ASCII.GetBytes(source);
-            var hashBytes = md5.ComputeHash(inputBytes);
-
-            return Convert.ToHexString(hashBytes);
-
-        }
-
-
-        public static async Task<int> RunProcessAsync(string fileName, string args)
-        {
-            using (var process = new Process
-                   {
-                       StartInfo =
-                       {
-                           FileName = fileName, Arguments = args,
-                           UseShellExecute = false, CreateNoWindow = true,
-                           RedirectStandardOutput = true, RedirectStandardError = true
-                       },
-                       EnableRaisingEvents = true
-                   })
+            if (!IsValidDbName(sourceDbNameBase) || !IsValidDbName(targetDbNameBase))
             {
-                return await RunProcessAsync(process).ConfigureAwait(false);
-            }
-        }
-        private static Task<int> RunProcessAsync(Process process)
-        {
-            var tcs = new TaskCompletionSource<int>();
-
-            process.Exited += (s, ea) => tcs.SetResult(process.ExitCode);
-            process.OutputDataReceived += (s, ea) => Console.WriteLine(ea.Data);
-            process.ErrorDataReceived += (s, ea) => Console.WriteLine("ERR: " + ea.Data);
-
-            bool started = process.Start();
-            if (!started)
-            {
-                //you may allow for the process to be re-used (started = false) 
-                //but I'm not sure about the guarantees of the Exited event in such a case
-                throw new InvalidOperationException("Could not start process: " + process);
+                throw new ArgumentException("Invalid Db name given");
             }
 
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
-
-            return tcs.Task;
-        }
-
-    }
-
-    public class AutoMmseqsSettings
-    {
-        public string QdbSuffix { get; init; } = "_qdb";
-        public string TempPath { get; set; } = Path.GetTempPath();
-        public string Mmseqs2Internal_DbHeaderSuffix { get; init; } = "_h";
-        public string Mmseqs2Internal_DbDataSuffix { get; init; } = String.Empty;
-        public string Mmseqs2Internal_DbIndexSuffix { get; init; } = ".index";
-        public string Mmseqs2Internal_DbLookupSuffix { get; init; }  = ".lookup";
-        public string Mmseqs2Internal_DbTypeSuffix { get; init; } = ".dbtype";
-        public string Mmseqs2Internal_ExpectedSeqDbSuffix => PreLoadDb ? ".idx" : "_seq";
-        public string Mmseqs2Internal_ExpectedAlnDbSuffix => PreLoadDb ? ".idx" : "_aln";
-        public string FastaSuffix { get; init; } = ".fasta";
-        public Dictionary<string, string> Custom { get; init; } = new();
-        public int ThreadCount { get; init; } = 1;
-        public bool PreLoadDb { get; init; } = false;
-        public int MaxDesiredBatchSize { get; init; } = 1600;
-        public string MmseqsBinaryPath { get; set; }
-    }
-
-    internal abstract class MmseqsCommandLineParameters : CommandLineParameters
-    {
-        public abstract string CommandString { get; }
-    }
-
-    internal class CreateDbParameters : MmseqsCommandLineParameters
-    {
-        public CreateDbParameters()
-        {
-            var defaultParams = new List<ICommandLineParameter>()
+            if (sourceFolder.Any(x=> Path.GetInvalidPathChars().Contains(x))  || destinationFolder.Any(x => Path.GetInvalidPathChars().Contains(x)))
             {
-                new CommandLineParameter<int>("--dbtype", "Database type 0: auto, 1: amino acid 2: nucleotides", 0, new List<CommandLineFeature>() 
-                {CommandLineFeature.MustHaveValue, CommandLineFeature.CanAcceptValueAfterWhiteSpace}),
-                new CommandLineParameter<bool>("--shuffle", "Shuffle input database", true, new List<CommandLineFeature>()
-                {CommandLineFeature.MustHaveValue, CommandLineFeature.CanAcceptValueAfterWhiteSpace}),
-                new CommandLineParameter<int>("--createdb-mode", "Createdb mode 0: copy data, 1: soft link data and write new index (works only with single line fasta/q)", 0, new List<CommandLineFeature>()
-                {CommandLineFeature.MustHaveValue, CommandLineFeature.CanAcceptValueAfterWhiteSpace}),                
-                new CommandLineParameter<int>("--id-offset", "Numeric ids in index file are offset by this value", 0, new List<CommandLineFeature>()
-                {CommandLineFeature.MustHaveValue, CommandLineFeature.CanAcceptValueAfterWhiteSpace}),
-                new CommandLineParameter<int>("--compressed", "Write compressed output [0]", 0, new List<CommandLineFeature>()
-                {CommandLineFeature.MustHaveValue, CommandLineFeature.CanAcceptValueAfterWhiteSpace}),
-                new CommandLineParameter<int>("-v", "Verbosity level: 0: quiet, 1: +errors, 2: +warnings, 3: +info", 3, new List<CommandLineFeature>()
-                {CommandLineFeature.MustHaveValue, CommandLineFeature.CanAcceptValueAfterWhiteSpace, CommandLineFeature.AffectsOnlyVerbosityOrSimilar}),
-                new CommandLineParameter<int>("--write-lookup", "write .lookup file containing mapping from internal id, fasta id and file number [1]", 1, new List<CommandLineFeature>()
-                {CommandLineFeature.MustHaveValue, CommandLineFeature.CanAcceptValueAfterWhiteSpace})
-            };
+                throw new ArgumentException("Invalid folder given");
+            }
 
-            Parameters = defaultParams;
+            if (!Directory.Exists(sourceFolder))
+            {
+                throw new ArgumentException("Source folder does not exist");
+            }
+
+            Directory.CreateDirectory(destinationFolder);
+
+            var possibleExtensions = Settings.PossibleDbExtensions();
+            var tasks = new List<Task>();
+
+            foreach (var extension in possibleExtensions.Values)
+            {
+                var sourceFilename = $"{sourceDbNameBase}{extension}";
+                var targetFilename = $"{targetDbNameBase}{extension}";
+                tasks.Add(Helper.CopyFileIfExistsAsync(Path.Join(sourceFolder, sourceFilename), Path.Join(destinationFolder, targetFilename)));
+            }
+
+            await Task.WhenAll(tasks);
+
         }
 
-        public override string CommandString => "createdb";
-    }
-
-    internal class CommandLineParameters
-    {
-        public CommandLineParameters()
+        private bool IsValidDbName(string sourceDbNameBase)
         {
-            this.Parameters = new List<ICommandLineParameter>();
+            return !sourceDbNameBase.Any(x => Path.GetInvalidFileNameChars().Contains(x) || char.IsWhiteSpace(x));
         }
 
-        public void ApplyDefaults()
-        {
-            Parameters.ForEach(x=>x.Value=x.DefaultValue);
-        }
-
-        public List<ICommandLineParameter> Parameters { get; protected init; }
-
-        public IEnumerable<ICommandLineParameter> GetNonDefault()
-        {
-            return Parameters.Where(x=> x.DefaultValue.CompareTo(x.Value) != 0);
-        }
-
+        
     }
 }

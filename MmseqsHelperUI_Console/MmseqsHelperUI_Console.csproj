@@ -15,4 +15,10 @@
     <ProjectReference Include="..\MmseqsHelperLib\MmseqsHelperLib.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="mmseqs_helper_config.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

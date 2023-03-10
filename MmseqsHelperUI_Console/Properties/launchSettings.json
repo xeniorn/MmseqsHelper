@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "MmseqsHelperUI_Console": {
+      "commandName": "Project",
+      "commandLineArgs": "auto-mono\r\n--InputFastaPaths=C:\\temp\\mmseqs_test\\input.fasta\r\n--MmseqsBinaryPath=\\$(which echo)\r\n--UniprotDbPath=uniprotdb\r\n--EnvDbPath=envdb\r\n--OutputPath=output\r\n"
+    }
+  }
+}

@@ -8,7 +8,7 @@
         public List<CommandLineFeature> ParameterFeatures { get; }
         public string Description { get; }
         public IComparable Value { get; set; }
-
+        
         string GetCommandLineString()
         {
             if (ParameterFeatures.Contains(CommandLineFeature.MustHaveValue))
