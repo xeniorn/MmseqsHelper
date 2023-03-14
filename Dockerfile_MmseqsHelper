@@ -1,0 +1,97 @@
+# https://chrissainty.com/containerising-blazor-applications-with-docker-containerising-a-blazor-webassembly-app/
+# https://stackoverflow.com/questions/47103570/asp-net-core-2-0-multiple-projects-solution-docker-file
+
+# most linux distros don't use "musl-type" libc, and should use normal ${dotnet_target_runtime} runtime
+ARG dotnet_target_runtime="linux-x64"
+ARG build_dir_absolute="/app/build"
+ARG publish_folder_absolute="/app/publish"
+ARG app_build_configuration=release
+ARG use_dotnet_self_contained=true
+
+######################################################################################
+FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build_fastalib
+
+### local
+ARG local_dir=/source/FastaHelperLib
+ARG source_project=FastaHelperLib
+
+### inherited
+ARG dotnet_target_runtime
+ARG build_dir_absolute
+ARG app_build_configuration
+ARG use_dotnet_self_contained
+
+WORKDIR ${local_dir}
+COPY ${source_project} ./
+RUN dotnet restore -r ${dotnet_target_runtime}
+RUN dotnet build -c ${app_build_configuration} -o ${build_dir_absolute} -r ${dotnet_target_runtime} --self-contained ${use_dotnet_self_contained} --no-restore
+
+
+######################################################################################
+FROM build_fastalib AS build_mmseqslib
+
+### local
+ARG local_dir=/source/MmseqsHelperLib
+ARG source_project=MmseqsHelperLib
+
+### inherited
+ARG dotnet_target_runtime
+ARG build_dir_absolute
+ARG app_build_configuration
+ARG use_dotnet_self_contained
+
+WORKDIR ${local_dir}
+COPY ${source_project} ./
+RUN dotnet restore -r ${dotnet_target_runtime}
+RUN dotnet build -c ${app_build_configuration} -o ${build_dir_absolute} -r ${dotnet_target_runtime} --self-contained ${use_dotnet_self_contained} --no-restore
+
+
+######################################################################################
+FROM build_mmseqslib AS build_mmseqscli
+
+### local
+ARG local_dir=/source/MmseqsHelperUI_Console
+ARG source_project=MmseqsHelperUI_Console
+
+### inherited
+ARG dotnet_target_runtime
+ARG build_dir_absolute
+ARG app_build_configuration
+ARG use_dotnet_self_contained
+
+WORKDIR ${local_dir}
+COPY ${source_project} ./
+RUN dotnet restore -r ${dotnet_target_runtime}
+RUN dotnet build -c ${app_build_configuration} -o ${build_dir_absolute} -r ${dotnet_target_runtime} --self-contained ${use_dotnet_self_contained} --no-restore
+
+
+######################################################################################
+FROM build_mmseqscli as publish
+
+### inherited
+ARG dotnet_target_runtime
+ARG build_dir_absolute
+ARG app_build_configuration
+ARG use_dotnet_self_contained
+ARG publish_folder_absolute
+
+RUN dotnet publish --self-contained true --runtime ${dotnet_target_runtime}  -c ${app_build_configuration} -o ${publish_folder_absolute}
+
+
+######################################################################################
+FROM xeniorn/mmseqs2:v2023-03-13 AS final
+
+### inherited
+ARG publish_folder_absolute
+
+### local
+ARG docker_final_helper_folder="/app"
+
+###############
+# built and published cli
+COPY --from=publish ${publish_folder_absolute} ${docker_final_helper_folder}
+
+ENV PATH=${docker_final_helper_folder}:$PATH
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+
+ENTRYPOINT []
