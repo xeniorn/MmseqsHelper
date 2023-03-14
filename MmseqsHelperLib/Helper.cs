@@ -3,7 +3,7 @@ using System.Text;
 
 namespace MmseqsHelperLib;
 
-public static class Helper
+public static partial class Helper
 {
     public static async Task CopyFileIfExistsAsync(string sourcePath, string targetPath)
     {
@@ -13,16 +13,18 @@ public static class Helper
         }
     }
 
-    public static async Task<int> RunProcessAsync(string fileName, string args, (Stream? output, Stream? error)? outStreams = null)
+    public static async Task<int> RunProcessAsync(string fileName, string args,
+        (Stream? output, Stream? error)? outStreams = null)
     {
         using var process = new Process
         {
             StartInfo =
-                {
-                    FileName = fileName, Arguments = args,
-                    UseShellExecute = false, CreateNoWindow = true,
-                    RedirectStandardOutput = (outStreams?.output is not null), RedirectStandardError = (outStreams?.error is not null)
-                },
+            {
+                FileName = fileName, Arguments = args,
+                UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardOutput = (outStreams?.output is not null),
+                RedirectStandardError = (outStreams?.error is not null)
+            },
             EnableRaisingEvents = true
         };
 
@@ -84,8 +86,5 @@ public static class Helper
         var hashBytes = md5.ComputeHash(inputBytes);
 
         return Convert.ToHexString(hashBytes);
-
     }
-
-
 }

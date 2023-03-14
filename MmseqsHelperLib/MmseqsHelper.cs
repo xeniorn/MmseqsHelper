@@ -9,6 +9,15 @@ namespace MmseqsHelperLib
 {
     public class MmseqsHelper
     {
+        private  string searchModule = Constants.ModuleStrings[SupportedMmseqsModule.Search];
+        private  string moveModule = Constants.ModuleStrings[SupportedMmseqsModule.MoveDatabase];
+        private  string linkModule = Constants.ModuleStrings[SupportedMmseqsModule.LinkDatabase];
+        private  string alignModule = Constants.ModuleStrings[SupportedMmseqsModule.Align];
+        private  string filterModule = Constants.ModuleStrings[SupportedMmseqsModule.FilterResult];
+        private  string msaConvertModule = Constants.ModuleStrings[SupportedMmseqsModule.ConvertResultToMsa];
+        private  string expandModule = Constants.ModuleStrings[SupportedMmseqsModule.ExpandAlignment];
+        private string mergeModule = Constants.ModuleStrings[SupportedMmseqsModule.MergeDatabases];
+
         private readonly ILogger<MmseqsHelper> _logger;
 
         public MmseqsHelper(AutoMmseqsSettings? inputSettings, ILogger<MmseqsHelper> logger)
@@ -139,7 +148,6 @@ namespace MmseqsHelperLib
         private async Task<(string searchDb, string profileDb)> AutoUniprotSearchAndCreateProfileAsync(string workingDir, string qdbPath)
         {
             //*******************************************search*******************************************************
-            const string searchModule = @"search";
             var processingFolderRoot = Path.Join(workingDir, "uniprot_shared");
             Directory.CreateDirectory(processingFolderRoot);
             var tempSubfolderForUniprotSearch = Path.Join(processingFolderRoot, "tmp");
@@ -155,12 +163,10 @@ namespace MmseqsHelperLib
             var profileResultDb = Path.Join(processingFolderRoot, "profile");
 
             //***move temp file from search as profile db***
-            const string moveModule = @"mvdb";
             var movePosParams = new List<string>() { profileResultDbOriginal, profileResultDb };
             await RunMmseqsAsync(moveModule, movePosParams, String.Empty);
 
             //***link to header db of qdb since it has the same values***
-            const string linkModule = @"lndb";
             var linkPosParams = new List<string>() { qdbPath + Settings.Mmseqs2Internal_DbHeaderSuffix, profileResultDb + Settings.Mmseqs2Internal_DbHeaderSuffix };
             await RunMmseqsAsync(linkModule, linkPosParams, String.Empty);
 
@@ -174,7 +180,6 @@ namespace MmseqsHelperLib
             Directory.CreateDirectory(localProcessingPath);
 
             //*******************************************merge the mono dbs*******************************************************
-            const string mergeModule = @"mergedbs";
             var mergeMonoResultDb = Path.Join(localProcessingPath, Settings.MonoModeResultDbName); 
             var mergePosParams = new List<string>()
             {
@@ -210,7 +215,6 @@ namespace MmseqsHelperLib
             var targetDbPathAln = targetDbPathBase + Settings.Mmseqs2Internal_ExpectedAlnDbSuffix;
 
             //*******************************************search*******************************************************
-            const string searchModule = @"search";
             var tempSubfolderForSearch = Path.Join(localProcessingPath, "tmp");
             Directory.CreateDirectory(tempSubfolderForSearch);
 
@@ -225,7 +229,6 @@ namespace MmseqsHelperLib
             await RunMmseqsAsync(searchModule, searchPosParams, $"{Settings.Custom["colabFold_SearchParamsShared"]} {Settings.Custom["performanceParams"]}");
 
             //*******************************************expand*******************************************************
-            const string expandModule = @"expand";
             var expandResultDb = Path.Join(localProcessingPath, $"expand");
             var expandPosParams = new List<string>()
             {
@@ -238,7 +241,6 @@ namespace MmseqsHelperLib
             await RunMmseqsAsync(expandModule, expandPosParams, $"{Settings.Custom["colabFold_ExpandParamsEnvMono"]} {Settings.Custom["performanceParams"]}");
 
             //*******************************************align*******************************************************
-            const string alignModule = @"align";
             var alignResultDb = Path.Join(localProcessingPath, $"align");
             var alignPosParams = new List<string>()
             {
@@ -250,7 +252,6 @@ namespace MmseqsHelperLib
             await RunMmseqsAsync(alignModule, alignPosParams, $"{Settings.Custom["colabFold_AlignParamsMono"]} {Settings.Custom["performanceParams"]}");
 
             //*******************************************filter*******************************************************
-            const string filterModule = @"filterresult";
             var filterResultDb = Path.Join(localProcessingPath, $"filter");
             var filterPosParams = new List<string>()
             {
@@ -262,7 +263,6 @@ namespace MmseqsHelperLib
             await RunMmseqsAsync(filterModule, filterPosParams, $"{Settings.Custom["colabFold_FilterParams"]} {Settings.Custom["performanceParams"]}");
 
             //*******************************************convert*******************************************************
-            const string msaConvertModule = @"result2msa";
             var msaConvertResultDb = Path.Join(localProcessingPath, $"env.a3m");
             var msaConvertPosParams = new List<string>()
             {
@@ -285,7 +285,6 @@ namespace MmseqsHelperLib
             var targetDbPathAln = targetDbPathBase + Settings.Mmseqs2Internal_ExpectedAlnDbSuffix;
 
             //*******************************************expand*******************************************************
-            const string expandModule = @"expand";
             var expandResultDb = Path.Join(localProcessingPath, $"expand");
             var expandPosParams = new List<string>()
             {
@@ -298,7 +297,6 @@ namespace MmseqsHelperLib
             await RunMmseqsAsync(expandModule, expandPosParams, $"{Settings.Custom["colabFold_ExpandParamsUnirefMono"]} {Settings.Custom["performanceParams"]}");
 
             //*******************************************align*******************************************************
-            const string alignModule = @"align";
             var alignResultDb = Path.Join(localProcessingPath, $"align");
             var alignPosParams = new List<string>()
             {
@@ -310,7 +308,6 @@ namespace MmseqsHelperLib
             await RunMmseqsAsync(alignModule, alignPosParams, $"{Settings.Custom["colabFold_AlignParamsMono"]} {Settings.Custom["performanceParams"]}");
 
             //*******************************************filter*******************************************************
-            const string filterModule = @"filterresult";
             var filterResultDb = Path.Join(localProcessingPath, $"filter");
             var filterPosParams = new List<string>()
             {
@@ -322,7 +319,6 @@ namespace MmseqsHelperLib
             await RunMmseqsAsync(filterModule, filterPosParams, $"{Settings.Custom["colabFold_FilterParams"]} {Settings.Custom["performanceParams"]}");
 
             //*******************************************convert*******************************************************
-            const string msaConvertModule = @"result2msa";
             var msaConvertResultDb = Path.Join(localProcessingPath, $"uniref.a3m");
             var msaConvertPosParams = new List<string>()
             {
@@ -346,7 +342,6 @@ namespace MmseqsHelperLib
             var targetDbPathAln = targetDbPathBase + Settings.Mmseqs2Internal_ExpectedAlnDbSuffix;
 
             //*******************************************expand*******************************************************
-            const string expandModule = @"expand";
             var expandResultDb = Path.Join(localProcessingPath, $"expand");
             var expandPosParams = new List<string>()
             {
@@ -359,8 +354,6 @@ namespace MmseqsHelperLib
             await RunMmseqsAsync(expandModule, expandPosParams, $"{Settings.Custom["colabFold_ExpandParamsUnirefPair"]} {Settings.Custom["performanceParams"]}");
 
             //*******************************************align*******************************************************
-            const string alignModule = @"align";
-
             var alignResultDb = Path.Join(localProcessingPath, Settings.PairModeFirstAlignDbName);
             var alignPosParams = new List<string>()
             {
