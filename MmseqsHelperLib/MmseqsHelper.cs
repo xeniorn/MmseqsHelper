@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
+using AlphafoldPredictionLib;
 using FastaHelperLib;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -418,9 +419,23 @@ namespace MmseqsHelperLib
             }
         }
 
+        private class PredictionTargetByIdComparer : EqualityComparer<PredictionTarget>
+        {
+            public override bool Equals(PredictionTarget? x, PredictionTarget? y)
+            {
+                if (x == null || y == null) return false;
+                return x.UserProvidedId.Equals(y.UserProvidedId, StringComparison.InvariantCulture);
+            }
+
+            public override int GetHashCode(PredictionTarget obj)
+            {
+                return obj.GetHashCode();
+            }
+        }
+
         private async Task<(List<Protein> existing,List<Protein> missing)> GetExistingAndMissingSetsAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> existingDatabasePaths, IEnumerable<string> excludeIds)
         {
-            var uniqueInputFastaEntries = new HashSet<Protein>(new ProteinByIdComparer());
+            var uniqueProteins = new HashSet<Protein>(new ProteinByIdComparer());
 
             var excludedList = excludeIds.ToList();
 
@@ -436,13 +451,24 @@ namespace MmseqsHelperLib
                             { Id = Helper.GetMd5Hash(fastaEntry.Sequence), Sequence = fastaEntry.Sequence };
                         if (!excludedList.Contains(protein.Id))
                         {
-                            uniqueInputFastaEntries.Add(protein);
+                            uniqueProteins.Add(protein);
                         }
                         
                     }
                 }
             }
 
+            var (existing, missing) =
+                await GetExistingAndMissingSetsAsync(uniqueProteins, existingDatabasePaths);
+
+            return (existing, missing);
+
+        }
+
+        private async Task<(List<Protein> existing, List<Protein> missing)> GetExistingAndMissingSetsAsync(IEnumerable<Protein> iproteins, IEnumerable<string> existingDatabasePaths)
+        {
+            var proteins = new HashSet<Protein>(iproteins, new ProteinByIdComparer());
+            
             var existing = new List<Protein>();
 
             var useExistingImplemented = false;
@@ -461,10 +487,9 @@ namespace MmseqsHelperLib
 
             }
 
-            var missing = uniqueInputFastaEntries.Except(existing).ToList();
+            var missing = proteins.Except(existing).ToList();
 
             return (existing, missing);
-
         }
 
         public static AutoMmseqsSettings GetDefaultSettings()
@@ -562,6 +587,92 @@ namespace MmseqsHelperLib
             return !sourceDbNameBase.Any(x => Path.GetInvalidFileNameChars().Contains(x) || char.IsWhiteSpace(x));
         }
 
-        
+        public async Task AutoCreateColabfoldA3msFromFastasGivenExistingMonoDbsAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> existingDatabasePaths, IEnumerable<string> excludedIds, string outputPath, IEnumerable<string> a3MPaths)
+        {
+            var excludedIdList = excludedIds.ToList();
+            
+            var (existingTargets, missingTargets) =
+                await GetExistingAndMissingPredictionTargetsAsync(inputFastaPaths, a3MPaths, excludedIdList);
+
+            if (!missingTargets.Any())
+            {
+                _logger.LogInformation("All targets already exist. No need to calculate any new MSAs.");
+                return;
+            }
+
+            if (existingTargets.Any())
+            {
+                _logger.LogInformation($"{existingTargets.Count}/{existingTargets.Count + missingTargets.Count} targets already exist, will not recalculate those.");
+            }
+
+            var allMonos = missingTargets.SelectMany()
+
+            var (existingMonos, missingMonos) = await GetExistingAndMissingSetsAsync(inputFastaPaths, existingDatabasePaths, excludedIdList);
+
+            var batches = GetBatches(missingTargets);
+
+            foreach (var proteinBatch in batches)
+            {
+                await AutoProcessProteinBatchIntoColabfoldMonoDb(outputPath, proteinBatch);
+            }
+        }
+
+        private async Task<(List<Protein> existing, List<Protein> missing)> GetExistingAndMissingPredictionTargetsAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> existingDatabasePaths, IEnumerable<string> excludeIds)
+        {
+            var uniqueInputFastaEntries = new HashSet<PredictionTarget>(new PredictionTargetByIdComparer());
+
+            var excludedList = excludeIds.ToList();
+
+            
+
+            foreach (var inputFastaPath in inputFastaPaths)
+            {
+                var stream = File.OpenRead(inputFastaPath);
+                var fastas = await FastaHelper.GetFastaEntriesIfValidAsync(stream, SequenceType.Protein);
+                if (fastas is not null && fastas.Any())
+                {
+                    var importer = new Importer();
+                    foreach (var target in await importer.ImportPredictionTargetsFromComplexProteinFastaFileAllowingMultimersAsync(fastas))
+                    {
+                        var aa =
+                            
+                        
+                        var pt = new PredictionTarget()
+                            var 
+                        { Id = Helper.GetMd5Hash(fastaEntry.Sequence), Sequence = fastaEntry.Sequence };
+                        if (!excludedList.Contains(protein.Id))
+                        {
+                            uniqueInputFastaEntries.Add(protein);
+                        }
+
+                    }
+                }
+            }
+
+            var existing = new List<PredictionTarget>();
+
+            var useExistingImplemented = false;
+            if (useExistingImplemented)
+            {
+                foreach (var existingDatabasePath in existingDatabasePaths)
+                {
+                    var filesInThisPath = Directory.GetFiles(existingDatabasePath);
+
+                    //TODO: not yet implemented
+
+                    var qdbSets = new List<(string data, string dataIndex, string header, string headerIndex)>();
+                    var indexFiles = filesInThisPath.Where(x =>
+                        x.EndsWith($"{Settings.QdbName}${Settings.Mmseqs2Internal_DbHeaderSuffix}"));
+                }
+
+            }
+
+            var missing = uniqueInputFastaEntries.Except(existing).ToList();
+
+            return (existing, missing);
+
+        }
+
+
     }
 }
