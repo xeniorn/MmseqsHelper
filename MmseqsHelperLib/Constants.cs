@@ -11,7 +11,8 @@ public static class Constants
         { SupportedMmseqsModule.ConvertResultToMsa , "result2msa"},
         {SupportedMmseqsModule.LinkDatabase, "lndb" },
         {SupportedMmseqsModule.MoveDatabase, "mvdb" },
-        {SupportedMmseqsModule.MergeDatabases, "mergedbs" }
+        {SupportedMmseqsModule.MergeDatabases, "mergedbs" },
+        { SupportedMmseqsModule.PairAlign, "pairaln"}
     };
 
 }

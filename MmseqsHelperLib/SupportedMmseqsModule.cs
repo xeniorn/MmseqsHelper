@@ -10,5 +10,6 @@ public enum SupportedMmseqsModule
     FilterResult,
     ConvertResultToMsa,
     ExpandAlignment,
-    MergeDatabases
+    MergeDatabases,
+    PairAlign
 }

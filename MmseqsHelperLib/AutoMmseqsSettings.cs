@@ -2,13 +2,13 @@
 
 public class AutoMmseqsSettings
 {
-    public string QdbName { get; init; } = "qdb";
-    public string PairModeFirstAlignDbName { get; init; } = "for_pairing_align_mmseqsdb";
-    public string MonoModeResultDbName { get; init; } = "final_mono_a3m_mmseqsdb";
+    public string PersistedDbQdbName { get; init; } = "qdb";
+    public string PersistedDbPairModeFirstAlignDbName { get; init; } = "for_pairing_align_mmseqsdb";
+    public string PersistedDbMonoModeResultDbName { get; init; } = "final_mono_a3m_mmseqsdb";
 
-    public string QdbRepositorySubPath { get; init; } = "qdbs";
-    public string PairDbRepositorySubPath { get; init; } = "for_pairing_aligned_dbs";
-    public string MonoDbRepositorySubPath { get; init; } = "mono_dbs";
+    //public string QdbRepositorySubPath { get; init; } = "qdbs";
+    //public string PairDbRepositorySubPath { get; init; } = "for_pairing_aligned_dbs";
+    //public string MonoDbRepositorySubPath { get; init; } = "mono_dbs";
 
     public string TempPath { get; set; } = Path.GetTempPath();
     public string Mmseqs2Internal_DbHeaderSuffix { get; init; } = "_h";
@@ -18,12 +18,16 @@ public class AutoMmseqsSettings
     public string Mmseqs2Internal_DbTypeSuffix { get; init; } = ".dbtype";
     public string Mmseqs2Internal_ExpectedSeqDbSuffix => PreLoadDb ? ".idx" : "_seq";
     public string Mmseqs2Internal_ExpectedAlnDbSuffix => PreLoadDb ? ".idx" : "_aln";
+    // manual says only \0 is the separator, but they always use newlines too, and terminal newline does not seem to be a part of the entry... so use it like this for now
+    public string Mmseqs2Internal_DataEntrySeparator { get; init; } = "\n\0";
     public string FastaSuffix { get; init; } = ".fasta";
     public Dictionary<string, string> Custom { get; init; } = new();
     public int ThreadCount { get; init; } = 1;
     public bool PreLoadDb { get; init; } = false;
     public int MaxDesiredBatchSize { get; init; } = 1600;
     public string MmseqsBinaryPath { get; set; }
+    public int MaxDesiredPredictionTargetBatchSize { get; set; } = 200;
+    public string Mmseqs2Internal_IndexColumnSeparator { get; init; } = "\t";
 
     public Dictionary<string,string> PossibleDbExtensions()
     {
