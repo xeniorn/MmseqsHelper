@@ -607,9 +607,20 @@ namespace MmseqsHelperLib
             var excludedIdList = excludedIds.ToList();
             var inputPathsList = inputFastaPaths.ToList();
             var a3mPathsList = a3MPaths.ToList();
-            var existingDatabasePathsList = existingDatabasePaths.ToList();
+            
+            var existingDatabaseFolderPaths = existingDatabasePaths.ToList();
+            var dbEntryFolders = await GetDbEntryFoldersAsync(existingDatabaseFolderPaths);
 
-
+            if (!dbEntryFolders.Any())
+            {
+                _logger.LogError("No valid folders found in provided source locations. Need pre-generated mono results to generate pair results.");
+                return;
+            }
+            else
+            {
+                _logger.LogInformation($"Found {dbEntryFolders.Count} potential sources for mono predictions. Will proceed.");
+            }
+            
             var (existingTargets, missingTargets) =
                 await GetExistingAndMissingPredictionTargetsAsync(inputPathsList, a3mPathsList, excludedIdList);
 
@@ -626,14 +637,41 @@ namespace MmseqsHelperLib
 
             var allMonos = missingTargets.SelectMany(x => x.UniqueProteins).DistinctBy(x => x.Sequence).ToList();
 
-            var (existingMonos, missingMonos) = await GetExistingAndMissingSetsAsync(allMonos, existingDatabasePathsList);
+            var (existingMonos, missingMonos) = await GetExistingAndMissingSetsAsync(allMonos, dbEntryFolders);
 
             var batches = GetPredictionTargetBatches(missingTargets);
 
             foreach (var targetBatch in batches)
             {
-                await AutoCreateColabfoldA3msFromFastasGivenExistingMonoDbsAsync(outputPath, existingDatabasePathsList, targetBatch);
+                await AutoCreateColabfoldA3msFromFastasGivenExistingMonoDbsAsync(outputPath, dbEntryFolders, targetBatch);
             }
+        }
+
+        private async Task<List<string>> GetDbEntryFoldersAsync(List<string> existingDatabaseFolderPaths)
+        {
+            var result = new List<string>();
+
+            foreach (var existingDatabaseFolderPath in existingDatabaseFolderPaths)
+            {
+                if (!Directory.Exists(existingDatabaseFolderPath))
+                {
+                    _logger.LogWarning($"Provided db path does not exist: {existingDatabaseFolderPath}");
+                    continue;
+                }
+
+                var foldersInside = Directory.GetDirectories(existingDatabaseFolderPath);
+                var validFolders = foldersInside.Where(x => IsValidDbFolder(x));
+                result.AddRange(validFolders);
+            }
+
+            return result;
+        }
+
+        private bool IsValidDbFolder(string path)
+        {
+            if (!Directory.Exists(path)) return false;
+            if (Directory.GetFiles(path).Length < Settings.PersistedDbMinimalNumberOfFilesInMonoDbResult) return false;
+            return true;
         }
 
         private async Task AutoCreateColabfoldA3msFromFastasGivenExistingMonoDbsAsync(string outputPath, List<string> existingDatabasePaths, List<PredictionTarget> predictionBatch)
@@ -645,14 +683,17 @@ namespace MmseqsHelperLib
 
             LogSomething($"starting pairing batch {batchId} with {predictionBatch.Count} items");
 
+            //TODO: check if it has all the required dbs: qdb header, (qdb seq => technically not really needed), aligndb, monoa3m
+            // not sure where it's best to do this without duplicating the entire search. Probably step-wise, also to allow pair-only mode later
 
             //*******************************************construct the starting dbs from mono fragments****************************
-            var (pairedQdb, pairedAlignDb) = await AutoUniprotConstructPairQdbAndAlignDbFromMonoDbsAsync(workingDir, existingDatabasePaths, predictionBatch);
+            //*******************************************grab the relevant mono results*******************************************************
+            var (pairedQdb, pairedAlignDb, unpairedA3mDb) = await AutoUniprotConstructPairQdbAndAlignDbAndUnpairA3mDbFromMonoDbsAsync(workingDir, existingDatabasePaths, predictionBatch);
 
 
             //*******************************************perform pairing*******************************************************
             var pairedDbPath = await AutoUniprotPerformPairingAsync(workingDir, pairedQdb, pairedAlignDb);
-
+            
 
             //*******************************************move the result files to final output*************************************
             var finalPathQdb = Path.Join(outputPath, batchId, Settings.PersistedDbQdbName);
@@ -730,12 +771,14 @@ namespace MmseqsHelperLib
             return msaConvertResultDb;
         }
 
-        private async Task<(string pairedQdb, string pairedAlignDb)> AutoUniprotConstructPairQdbAndAlignDbFromMonoDbsAsync(string workingDir, List<string> existingDatabaseFolderPaths, List<PredictionTarget> predictionBatch)
+        private async Task<(string pairedQdb, string pairedAlignDb, string unpairedA3mDb)> AutoUniprotConstructPairQdbAndAlignDbAndUnpairA3mDbFromMonoDbsAsync(
+            string workingDir, List<string> existingDatabaseFolderPaths, List<PredictionTarget> predictionBatch)
         {
             Directory.CreateDirectory(workingDir);
 
             var pairedQdb = Path.Join(workingDir, "qdb");
             var pairedAlignDb = Path.Join(workingDir, "align1");
+            var unpairedA3mDb = Path.Join(workingDir, "unpaired_a3m_mmseqsdb");
 
             //*******************************************figure out which mono dbs contain relevant entries at which indices*******************************************************
             //******************************************* and read in relevant fragments of align files*******************************************************
@@ -852,7 +895,6 @@ namespace MmseqsHelperLib
                         }
                     }
                 }
-
             }
 
             //*******************************************construct pair dbs from known sources*******************************************************
@@ -860,9 +902,11 @@ namespace MmseqsHelperLib
             var generatedMonoIndex = 0;
             var generatedPredictionIndex = 0;
 
-            var alignDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.Alignment);
-            var qdbDataDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.Sequence);
-            var qdbHeaderDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.Header);
+            var alignDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.Alignment_ALIGNMENT_RES);
+            var qdbDataDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.Sequence_AMINO_ACIDS);
+            var qdbHeaderDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.Header_GENERIC_DB);
+            var unpairedA3mDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.A3m_MSA_DB);
+
             var qdbLookupFileFragments = new List<MmseqsLookupEntry>();
 
             var monoToNewIdMapping = new Dictionary<Protein, int>();
@@ -892,17 +936,19 @@ namespace MmseqsHelperLib
             var pairQdbDataDbPath = $"{pairedQdb}{Settings.Mmseqs2Internal_DbDataSuffix}";
             var pairQdbHeaderDbPath = $"{pairedQdb}{Settings.Mmseqs2Internal_DbHeaderSuffix}";
             var alignDbDataDbPath = $"{pairedAlignDb}{Settings.Mmseqs2Internal_DbDataSuffix}";
+            var unpairedA3mDbDataDbPath = $"{unpairedA3mDb}{Settings.Mmseqs2Internal_DbDataSuffix}";
 
             var writeTasks = new List<Task>
             {
                 qdbDataDbObject.WriteToFileSystemAsync(Settings, pairQdbDataDbPath),
                 qdbHeaderDbObject.WriteToFileSystemAsync(Settings, pairQdbHeaderDbPath),
-                alignDbObject.WriteToFileSystemAsync(Settings, alignDbDataDbPath)
+                alignDbObject.WriteToFileSystemAsync(Settings, alignDbDataDbPath),
+                unpairedA3mDbObject.WriteToFileSystemAsync(Settings, unpairedA3mDbDataDbPath)
             };
 
             await Task.WhenAll(writeTasks);
             
-            return (pairedQdb, pairedAlignDb);
+            return (pairedQdb, pairedAlignDb, unpairedA3mDb);
 
         }
 
@@ -922,7 +968,7 @@ namespace MmseqsHelperLib
                 {
                     reader.BaseStream.Position = startOffset;
                     var lengthToRead = length - Settings.Mmseqs2Internal_DataEntrySeparator.Length;
-                    var data = reader.ReadBytes(length);
+                    var data = reader.ReadBytes(lengthToRead);
                     result.Add((data, index));
                 }
             }
@@ -1008,10 +1054,14 @@ namespace MmseqsHelperLib
             foreach (var inputFastaPath in inputFastaPaths)
             {
                 var stream = File.OpenRead(inputFastaPath);
-                var fastas = await FastaHelper.GetFastaEntriesIfValidAsync(stream, SequenceType.Protein);
+                var fastas = await FastaHelper.GetFastaEntriesIfValidAsync(stream, SequenceType.Protein, keepCharacters:":");
                 if (fastas is not null && fastas.Any())
                 {
-                    targets.AddRange(await importer.ImportPredictionTargetsFromComplexProteinFastaFileAllowingMultimersAsync(fastas));
+                    var newPredictions =
+                        await importer.ImportPredictionTargetsFromComplexProteinFastaFileAllowingMultimersAsync(fastas);
+                    // auto-id proteins with their hash
+                    newPredictions.ForEach(x=>x.UniqueProteins.ForEach(prot=>prot.Id = Helper.GetMd5Hash(prot.Sequence)));
+                    targets.AddRange(newPredictions);
                 }
             }
 
@@ -1049,89 +1099,5 @@ namespace MmseqsHelperLib
 
             return (existing, missing);
         }
-    }
-
-    public class MmseqsDatabaseObject
-    {
-        public MmseqsDatabaseObject(MmseqsDatabaseType type)
-        {
-            this.DatabaseType = type;
-            Entries = new Dictionary<int, byte[]>();
-        }
-
-        public MmseqsDatabaseType DatabaseType { get; }
-
-        private Dictionary<int, byte[]> Entries { get; }
-
-        public int Add(byte[] data)
-        {
-            var nextIndex = Entries.Count > 0 ? Entries.Keys.Max() + 1 : 0;
-            Add(data, nextIndex);
-            return nextIndex;
-        }
-
-        public void Add(byte[] data, int targetIndex)
-        {
-            if (Entries.ContainsKey(targetIndex))
-            {
-                throw new ArgumentException("Entry with this index already exists");
-            }
-            Entries.Add(targetIndex, data);
-        }
-
-        public async Task WriteToFileSystemAsync(AutoMmseqsSettings settings, string dbPath)
-        {
-            var aggregateOffset = 0;
-
-            var separator = Encoding.ASCII.GetBytes(settings.Mmseqs2Internal_DataEntrySeparator);
-            var newline = Encoding.ASCII.GetBytes("\n");
-
-            var dataDbPath = Path.Join(dbPath, settings.Mmseqs2Internal_DbDataSuffix);
-            var indexDbPath = Path.Join(dbPath, settings.Mmseqs2Internal_DbIndexSuffix);
-
-            var dataFragments = Entries.Values.ToList();
-            var totalDataLength = dataFragments.Select(x => x.Length + separator.Length).Sum();
-
-            await using var dataWriteStream = new FileStream(dataDbPath, FileMode.CreateNew, FileAccess.Write,
-                       FileShare.None, bufferSize: totalDataLength, useAsync: true);
-
-            await using var indexWriteStream = new FileStream(indexDbPath, FileMode.CreateNew, FileAccess.Write,
-                FileShare.None, bufferSize: 4096, useAsync: true);
-
-            // this might be quite inefficient
-            foreach (var (index, data) in Entries)
-            {
-                var entryDataLength = data.Length + settings.Mmseqs2Internal_DataEntrySeparator.Length;
-                var indexFragment = new MmseqsIndexEntry(index, aggregateOffset, entryDataLength);
-                aggregateOffset += entryDataLength;
-
-                await dataWriteStream.WriteAsync(data);
-                await dataWriteStream.WriteAsync(separator);
-
-                await indexWriteStream.WriteAsync(GenerateMmseqsEntryLine(indexFragment, settings));
-                await indexWriteStream.WriteAsync(newline);
-
-            }
-        }
-
-        private byte[] GenerateMmseqsEntryLine(MmseqsIndexEntry mmseqsIndexEntry, AutoMmseqsSettings settings)
-        {
-            var separator = settings.Mmseqs2Internal_IndexColumnSeparator;
-            var resultString = string.Join(separator, mmseqsIndexEntry.Index, mmseqsIndexEntry.StartOffset,
-                mmseqsIndexEntry.Length);
-            return Encoding.ASCII.GetBytes(resultString);
-        }
-    }
-
-    public enum MmseqsDatabaseType
-    {
-        Alignment,
-        Sequence,
-        Header
-    }
-
-    public record MmseqsIndexedDbEntry(byte[] Data, MmseqsIndexEntry IndexEntry)
-    {
-
     }
 }

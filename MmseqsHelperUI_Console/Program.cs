@@ -83,12 +83,12 @@ internal sealed class Program
         {
             if (selectedMode.Process == MmseqsAutoProcess.GenerateA3mFilesForColabfold)
             {
-                builder.AddInMemoryCollection(new List<KeyValuePair<string, string>>()
-                {
-                    new("InputFastaPaths",@"C:\temp\mmseqs_test\input.fasta"),
-                    new("ExistingDatabasePaths",@"C:\temp\mmseqs_test\result_db"),
-                    new("OutputPath",@"C:\temp\mmseqs_test\out" )
-                });
+                //builder.AddInMemoryCollection(new List<KeyValuePair<string, string>>()
+                //{
+                //    new("InputFastaPaths",@"C:\temp\mmseqs_test\input.fasta"),
+                //    new("ExistingDatabasePaths",@"C:\temp\mmseqs_test\result_db"),
+                //    new("OutputPath",@"C:\temp\mmseqs_test\out" )
+                //});
             }
         });
 
