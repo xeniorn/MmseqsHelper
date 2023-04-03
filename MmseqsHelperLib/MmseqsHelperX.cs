@@ -19,7 +19,6 @@ namespace MmseqsHelperLib
         private string msaConvertModule = Constants.ModuleStrings[SupportedMmseqsModule.ConvertResultToMsa];
         private string expandModule = Constants.ModuleStrings[SupportedMmseqsModule.ExpandAlignment];
         private string mergeModule = Constants.ModuleStrings[SupportedMmseqsModule.MergeDatabases];
-
         private string pairModule = Constants.ModuleStrings[SupportedMmseqsModule.PairAlign];
 
         private readonly ILogger<MmseqsHelper> _logger;
@@ -797,6 +796,9 @@ namespace MmseqsHelperLib
             // actual data of each aligndb for each mono
             var monoToAlignFragmentMappings = new Dictionary<Protein, byte[]>();
 
+            // actual unpaired data
+            var monoToUnpairedA3mMappings = new Dictionary<Protein, byte[]>();
+
             foreach (var predictionTarget in predictionBatch)
             {
                 var monos = predictionTarget.UniqueProteins.Select(x => targetMonos.Single(prot => prot.SameSequenceAs(x))).ToList();
@@ -816,6 +818,8 @@ namespace MmseqsHelperLib
                 await GetDbToMonoMappingsForSearchBatch(searchBatch, remainingMonos, dbToMonoMapping);
                 await GetMonoToDbAndIndexMappingsForSearchBatch(searchBatch, dbToMonoMapping, monoToDbAndIndexMapping);
                 await ReadInAlignDbFragmentsForSearchBatch(searchBatch, dbToMonoMapping, monoToDbAndIndexMapping, monoToAlignFragmentMappings);
+                await ReadInUnpairedA3mDbFragmentsForSearchBatch(searchBatch, dbToMonoMapping, monoToDbAndIndexMapping,
+                    monoToUnpairedA3mMappings);
 
                 async Task GetDbToMonoMappingsForSearchBatch(List<string> dbLocationsToSearch, List<Protein> proteins,
                     Dictionary<string, List<Protein>> mutableDbToMonoMapping)
@@ -879,7 +883,7 @@ namespace MmseqsHelperLib
 
                         // queue up tasks for now don't await one by one
                         var alignDb = Path.Join(dbLocation, Settings.PersistedDbPairModeFirstAlignDbName);
-                        resultTasksMapping.Add((dbLocation, ReadEntriesWithIndicesFromAlignDbAsync(alignDb, indices)));
+                        resultTasksMapping.Add((dbLocation, ReadEntriesWithIndicesFromDataDbAsync(alignDb, indices)));
                     }
 
                     await Task.WhenAll(resultTasksMapping.Select(x => x.resultTask));
@@ -895,6 +899,37 @@ namespace MmseqsHelperLib
                         }
                     }
                 }
+
+                async Task ReadInUnpairedA3mDbFragmentsForSearchBatch(List<string> dbLocationsToProcess,
+                    Dictionary<string, List<Protein>> dbToMonoMapping, Dictionary<Protein, (string db, int index)> monoToDbAndIndexMapping,
+                    Dictionary<Protein, byte[]> mutableMonoToUnpairedA3mFragmentMapping)
+                {
+                    var resultTasksMapping = new List<(string db, Task<List<(byte[] data, int index)>> resultTask)>();
+                    foreach (var dbLocation in dbLocationsToProcess)
+                    {
+                        var proteinsInThisDb = dbToMonoMapping[dbLocation];
+                        var indices = monoToDbAndIndexMapping.Where(x => x.Value.db == dbLocation && proteinsInThisDb.Contains(x.Key))
+                            .Select(x => x.Value.index).ToList();
+
+                        // queue up tasks for now don't await one by one
+                        var unpairedA3mDb = Path.Join(dbLocation, Settings.PersistedDbMonoModeResultDbName);
+                        resultTasksMapping.Add((dbLocation, ReadEntriesWithIndicesFromDataDbAsync(unpairedA3mDb, indices)));
+                    }
+
+                    await Task.WhenAll(resultTasksMapping.Select(x => x.resultTask));
+
+                    foreach (var (dbPath, resultTask) in resultTasksMapping)
+                    {
+                        var proteinsInThisDb = dbToMonoMapping[dbPath];
+                        var indexedData = resultTask.Result;
+                        foreach (var (data, index) in indexedData)
+                        {
+                            var protein = proteinsInThisDb.Single(x => monoToDbAndIndexMapping[x].db == dbPath && monoToDbAndIndexMapping[x].index == index);
+                            mutableMonoToUnpairedA3mFragmentMapping.Add(protein, data);
+                        }
+                    }
+                }
+
             }
 
             //*******************************************construct pair dbs from known sources*******************************************************
@@ -918,11 +953,14 @@ namespace MmseqsHelperLib
                 {
                     // take the protein from the prefiltered references, avoiding multiple references to equivalent entity
                     var protein = targetMonos.Single(x => x.Id == targetProtein.Id);
-                    var data = monoToAlignFragmentMappings[protein];
-                    
+                    var alignData = monoToAlignFragmentMappings[protein];
+                    var unpairedA3mData = monoToUnpairedA3mMappings[protein];
+
+
                     qdbDataDbObject.Add(Encoding.ASCII.GetBytes(protein.Sequence), generatedMonoIndex);
                     qdbHeaderDbObject.Add(Encoding.ASCII.GetBytes(protein.Id), generatedMonoIndex);
-                    alignDbObject.Add(data, generatedMonoIndex);
+                    alignDbObject.Add(alignData, generatedMonoIndex);
+                    unpairedA3mDbObject.Add(unpairedA3mData, generatedMonoIndex);
                     qdbLookupFileFragments.Add(new MmseqsLookupEntry(generatedMonoIndex, protein.Id, generatedPredictionIndex));
                     
                     monoToNewIdMapping.Add(protein, generatedMonoIndex);
@@ -952,17 +990,17 @@ namespace MmseqsHelperLib
 
         }
 
-        private async Task<List<(byte[] data, int index)>> ReadEntriesWithIndicesFromAlignDbAsync(string alignDbPath, List<int> indices)
+        private async Task<List<(byte[] data, int index)>> ReadEntriesWithIndicesFromDataDbAsync(string dataDbPath, List<int> indices)
         {
             var result = new List<(byte[] data, int index)>();
 
-            var alignDbIndexFile = $"{alignDbPath}{Settings.Mmseqs2Internal_DbIndexSuffix}";
-            var entries = await GetAllIndexFileEntriesInDbAsync(alignDbIndexFile);
+            var dbIndexFile = $"{dataDbPath}{Settings.Mmseqs2Internal_DbIndexSuffix}";
+            var entries = await GetAllIndexFileEntriesInDbAsync(dbIndexFile);
             var orderedEntriesToRead = entries.Where(x => indices.Contains(x.index)).OrderBy(x => x.startOffset).ToList();
 
-            var alignDbDataFile = $"{alignDbPath}{Settings.Mmseqs2Internal_DbDataSuffix}";
+            var dbDataFile = $"{dataDbPath}{Settings.Mmseqs2Internal_DbDataSuffix}";
 
-            using (BinaryReader reader = new BinaryReader(new FileStream(alignDbDataFile, FileMode.Open)))
+            using (BinaryReader reader = new BinaryReader(new FileStream(dbDataFile, FileMode.Open)))
             {
                 foreach (var (index, startOffset, length) in orderedEntriesToRead)
                 {

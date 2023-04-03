@@ -2,6 +2,7 @@
 
 public class AutoMmseqsSettings
 {
+    public string PersistedDbFinalA3mExtension { get; init; } = ".a3m";
     public string PersistedDbQdbName { get; init; } = "qdb";
     public string PersistedDbPairModeFirstAlignDbName { get; init; } = "for_pairing_align_mmseqsdb";
     public string PersistedDbMonoModeResultDbName { get; init; } = "final_mono_a3m_mmseqsdb";
@@ -30,6 +31,7 @@ public class AutoMmseqsSettings
     public string Mmseqs2Internal_IndexColumnSeparator { get; init; } = "\t";
     // (data, index, dbtype) for (mono, pair_align, qdb, qdb_h) = 12, plus qdb.lookup (not needed)
     public int PersistedDbMinimalNumberOfFilesInMonoDbResult { get; init; } = 12;
+    public int PairResultDatabaseSubfolderLength { get; init; } = 2;
 
     public Dictionary<string,string> PossibleDbExtensions()
     {
