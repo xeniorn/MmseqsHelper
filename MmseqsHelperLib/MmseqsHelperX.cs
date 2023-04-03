@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
@@ -687,31 +688,36 @@ namespace MmseqsHelperLib
 
             //*******************************************construct the starting dbs from mono fragments****************************
             //*******************************************grab the relevant mono results*******************************************************
-            var (pairedQdb, pairedAlignDb, unpairedA3mDb) = await AutoUniprotConstructPairQdbAndAlignDbAndUnpairA3mDbFromMonoDbsAsync(workingDir, existingDatabasePaths, predictionBatch);
-
+            var predictionToIndexMapping = new Dictionary<PredictionTarget, List<int>>();
+            LogSomething($"Collecting mono data required for pairing...");
+            var (pairedQdb, pairedAlignDb, unpairedA3mDb) = await AutoUniprotConstructPairQdbAndAlignDbAndUnpairA3mDbFromMonoDbsAsync(workingDir, existingDatabasePaths, predictionBatch, predictionToIndexMapping);
 
             //*******************************************perform pairing*******************************************************
+            LogSomething($"Performing MSA pairing...");
             var pairedDbPath = await AutoUniprotPerformPairingAsync(workingDir, pairedQdb, pairedAlignDb);
+
+            //*******************************************construct invdividual result dbs*******************************************************
+            LogSomething($"Combining paired and unpaired data...");
+            var colabfoldMsaObjects =
+                await AutoCreateColabfoldMsaObjectsAsync(workingDir, unpairedA3mDb, pairedDbPath, predictionToIndexMapping);
             
+            //*******************************************write the result files*************************************
+            LogSomething($"Writing {colabfoldMsaObjects.Count} result files in {outputPath}...");
+            foreach (var msaObject in colabfoldMsaObjects)
+            {
+                var autoName = msaObject.HashId;
+                var subfolder = autoName.Substring(0, Settings.PairResultDatabaseSubfolderLength);
+                var targetFolder = Path.Combine(outputPath, subfolder);
+                Directory.CreateDirectory(targetFolder);
+                var fullFilePath = $"{Path.Join(targetFolder, autoName)}{Settings.PersistedDbFinalA3mExtension}";
+                await File.WriteAllBytesAsync(fullFilePath, msaObject.GetBytes());
+            }
 
-            //*******************************************move the result files to final output*************************************
-            var finalPathQdb = Path.Join(outputPath, batchId, Settings.PersistedDbQdbName);
-            var finalPathMonos = Path.Join(outputPath, batchId, Settings.PersistedDbMonoModeResultDbName);
-            var finalPathPair = Path.Join(outputPath, batchId, Settings.PersistedDbPairModeFirstAlignDbName);
+        }
 
-            //var copyTasks = new List<Task>()
-            //{
-            //    CopyDatabaseAsync(qdbPath, finalPathQdb),
-            //    CopyDatabaseAsync(mergeMonoDbPath, finalPathMonos),
-            //    CopyDatabaseAsync(pairDbPath, finalPathPair),
-            //};
-
-            //await Task.WhenAll(copyTasks);
-
-
-            LogSomething(finalPathQdb);
-            LogSomething(finalPathMonos);
-            LogSomething(finalPathPair);
+        private async Task<List<ColabFoldMsaObject>> AutoCreateColabfoldMsaObjectsAsync(string workingDir, string unpairedA3MDb, string pairedDbPath, Dictionary<PredictionTarget, List<int>> predictionToIndexMapping)
+        {
+            throw new NotImplementedException();
         }
 
         private async Task<string> AutoUniprotPerformPairingAsync(string workingDir, string qdbPath, string pairedAlignDb)
@@ -771,7 +777,7 @@ namespace MmseqsHelperLib
         }
 
         private async Task<(string pairedQdb, string pairedAlignDb, string unpairedA3mDb)> AutoUniprotConstructPairQdbAndAlignDbAndUnpairA3mDbFromMonoDbsAsync(
-            string workingDir, List<string> existingDatabaseFolderPaths, List<PredictionTarget> predictionBatch)
+            string workingDir, List<string> existingDatabaseFolderPaths, List<PredictionTarget> predictionBatch, Dictionary<PredictionTarget,List<int>> mutablePredictionToIndexMapping)
         {
             Directory.CreateDirectory(workingDir);
 
@@ -943,12 +949,14 @@ namespace MmseqsHelperLib
             var unpairedA3mDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.A3m_MSA_DB);
 
             var qdbLookupFileFragments = new List<MmseqsLookupEntry>();
-
-            var monoToNewIdMapping = new Dictionary<Protein, int>();
-            var predictionToNewPairIdMapping = new Dictionary<PredictionTarget, int>();
+            
+            //var monoToNewIdMapping = new Dictionary<Protein, int>();
+            //var predictionToNewPairIdMapping = new Dictionary<PredictionTarget, int>();
 
             foreach (var predictionTarget in predictionBatch)
             {
+                var indexList = new List<int>();
+
                 foreach (var targetProtein in predictionTarget.UniqueProteins)
                 {
                     // take the protein from the prefiltered references, avoiding multiple references to equivalent entity
@@ -962,12 +970,12 @@ namespace MmseqsHelperLib
                     alignDbObject.Add(alignData, generatedMonoIndex);
                     unpairedA3mDbObject.Add(unpairedA3mData, generatedMonoIndex);
                     qdbLookupFileFragments.Add(new MmseqsLookupEntry(generatedMonoIndex, protein.Id, generatedPredictionIndex));
-                    
-                    monoToNewIdMapping.Add(protein, generatedMonoIndex);
+
+                    indexList.Add(generatedMonoIndex);
                     generatedMonoIndex++;
                 }
 
-                predictionToNewPairIdMapping.Add(predictionTarget, generatedPredictionIndex);
+                mutablePredictionToIndexMapping.Add(predictionTarget, indexList);
                 generatedPredictionIndex++;
             }
             
@@ -1137,5 +1145,57 @@ namespace MmseqsHelperLib
 
             return (existing, missing);
         }
+    }
+
+    public class ColabFoldMsaObject
+    {
+        public string HashId { get; private set; }
+
+        public byte[] GetBytes()
+        {
+            var text = GetString();
+            var bytes = Encoding.ASCII.GetBytes(text);
+            return bytes;
+        }
+
+        private string GetString()
+        {
+            var lines = new List<string>();
+            
+            var commentLine = $"#{String.Join(",", PredictionTarget.UniqueProteins.Select(x => x.Sequence.Length))}\t{String.Join(",", PredictionTarget.Multiplicities)}";
+            lines.Add(commentLine);
+            lines.AddRange(GetPairLines());
+            foreach (var predictionTargetUniqueProtein in PredictionTarget.UniqueProteins)
+            {
+                lines.AddRange(GetUnpairedLines(predictionTargetUniqueProtein));
+            }
+
+            return string.Join("\n", lines);
+
+        }
+
+        private IOrderedEnumerable<string> GetPairLines()
+        {
+            var pairedLinesMapping = new Dictionary<Protein, string[]>();
+            foreach (var (protein, bytes) in PairedData)
+            {
+                var lines = Encoding.ASCII.GetString(bytes).Split("\n");
+                pairedLinesMapping.Add(protein, lines);
+            }
+
+            var lineCount = pairedLinesMapping.First().Value.Length;
+            if (pairedLinesMapping.Values.Any(x => x.Length != lineCount))
+            {
+                throw new ArgumentException("Paired reads have unequal number of lines, this should not happen.");
+            }
+
+
+
+        }
+
+        public Dictionary<Protein, byte[]> PairedData { get; init; }
+        public Dictionary<Protein, byte[]> UnpairedData { get; init; }
+
+        public PredictionTarget PredictionTarget { get; init; }
     }
 }
