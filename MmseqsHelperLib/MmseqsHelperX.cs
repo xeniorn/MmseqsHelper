@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
+using System.Xml.XPath;
 using AlphafoldPredictionLib;
 using FastaHelperLib;
 using Microsoft.Extensions.Logging;
@@ -267,7 +268,7 @@ namespace MmseqsHelperLib
             await RunMmseqsAsync(filterModule, filterPosParams, $"{Settings.Custom["colabFold_FilterParams"]} {Settings.Custom["performanceParams"]}");
 
             //*******************************************convert*******************************************************
-            var msaConvertResultDb = Path.Join(localProcessingPath, $"env.a3m");
+            var msaConvertResultDb = Path.Join(localProcessingPath, $"env_a3m");
             var msaConvertPosParams = new List<string>()
             {
                 qdbPath,
@@ -323,7 +324,7 @@ namespace MmseqsHelperLib
             await RunMmseqsAsync(filterModule, filterPosParams, $"{Settings.Custom["colabFold_FilterParams"]} {Settings.Custom["performanceParams"]}");
 
             //*******************************************convert*******************************************************
-            var msaConvertResultDb = Path.Join(localProcessingPath, $"uniref.a3m");
+            var msaConvertResultDb = Path.Join(localProcessingPath, $"uniref_mono_a3m");
             var msaConvertPosParams = new List<string>()
             {
                 qdbPath,
@@ -699,7 +700,7 @@ namespace MmseqsHelperLib
             //*******************************************construct invdividual result dbs*******************************************************
             LogSomething($"Combining paired and unpaired data...");
             var colabfoldMsaObjects =
-                await AutoCreateColabfoldMsaObjectsAsync(workingDir, unpairedA3mDb, pairedDbPath, predictionToIndexMapping);
+                await AutoCreateColabfoldMsaObjectsAsync(predictionBatch, unpairedA3mDb, pairedDbPath, predictionToIndexMapping);
             
             //*******************************************write the result files*************************************
             LogSomething($"Writing {colabfoldMsaObjects.Count} result files in {outputPath}...");
@@ -715,9 +716,35 @@ namespace MmseqsHelperLib
 
         }
 
-        private async Task<List<ColabFoldMsaObject>> AutoCreateColabfoldMsaObjectsAsync(string workingDir, string unpairedA3MDb, string pairedDbPath, Dictionary<PredictionTarget, List<int>> predictionToIndexMapping)
+        private async Task<List<ColabFoldMsaObject>> AutoCreateColabfoldMsaObjectsAsync(List<PredictionTarget> predictions, string unpairedA3MDb, string pairedDbPath, Dictionary<PredictionTarget, List<int>> predictionToIndexMapping)
         {
-            throw new NotImplementedException();
+            var result = new List<ColabFoldMsaObject>();
+
+            foreach (var predictionTarget in predictions)
+            {
+                var indices = predictionToIndexMapping[predictionTarget];
+                
+                var unpairedDataCollection = await ReadEntriesWithIndicesFromDataDbAsync(unpairedA3MDb, indices);
+                var pairedDataCollection = await ReadEntriesWithIndicesFromDataDbAsync(pairedDbPath, indices);
+
+                var unpairedDataDict = new Dictionary<Protein, byte[]>();
+                var pairedDataDict = new Dictionary<Protein, byte[]>();
+
+                for (int i = 0; i < predictionTarget.UniqueProteins.Count; i++)
+                {
+                    var protein = predictionTarget.UniqueProteins[i];
+                    
+                    var unpairedData = unpairedDataCollection.Single(x => x.index == indices[i]).data;
+                    unpairedDataDict.Add(protein,unpairedData);
+                    var pairedData = pairedDataCollection.Single(x => x.index == indices[i]).data;
+                    pairedDataDict.Add(protein, pairedData);
+                }
+
+                var msaObj = new ColabFoldMsaObject(pairedDataDict, unpairedDataDict, predictionTarget);
+                result.Add(msaObj);
+            }
+
+            return result;
         }
 
         private async Task<string> AutoUniprotPerformPairingAsync(string workingDir, string qdbPath, string pairedAlignDb)
@@ -763,7 +790,7 @@ namespace MmseqsHelperLib
             await RunMmseqsAsync(pairModule, pair2PosParams, $"{Settings.Custom["performanceParams"]}");
             
             //*******************************************convert*******************************************************
-            var msaConvertResultDb = Path.Join(localProcessingPath, $"uniref_pair.a3m");
+            var msaConvertResultDb = Path.Join(localProcessingPath, $"uniref_pair_a3m");
             var msaConvertPosParams = new List<string>()
             {
                 qdbPath,
@@ -1145,57 +1172,5 @@ namespace MmseqsHelperLib
 
             return (existing, missing);
         }
-    }
-
-    public class ColabFoldMsaObject
-    {
-        public string HashId { get; private set; }
-
-        public byte[] GetBytes()
-        {
-            var text = GetString();
-            var bytes = Encoding.ASCII.GetBytes(text);
-            return bytes;
-        }
-
-        private string GetString()
-        {
-            var lines = new List<string>();
-            
-            var commentLine = $"#{String.Join(",", PredictionTarget.UniqueProteins.Select(x => x.Sequence.Length))}\t{String.Join(",", PredictionTarget.Multiplicities)}";
-            lines.Add(commentLine);
-            lines.AddRange(GetPairLines());
-            foreach (var predictionTargetUniqueProtein in PredictionTarget.UniqueProteins)
-            {
-                lines.AddRange(GetUnpairedLines(predictionTargetUniqueProtein));
-            }
-
-            return string.Join("\n", lines);
-
-        }
-
-        private IOrderedEnumerable<string> GetPairLines()
-        {
-            var pairedLinesMapping = new Dictionary<Protein, string[]>();
-            foreach (var (protein, bytes) in PairedData)
-            {
-                var lines = Encoding.ASCII.GetString(bytes).Split("\n");
-                pairedLinesMapping.Add(protein, lines);
-            }
-
-            var lineCount = pairedLinesMapping.First().Value.Length;
-            if (pairedLinesMapping.Values.Any(x => x.Length != lineCount))
-            {
-                throw new ArgumentException("Paired reads have unequal number of lines, this should not happen.");
-            }
-
-
-
-        }
-
-        public Dictionary<Protein, byte[]> PairedData { get; init; }
-        public Dictionary<Protein, byte[]> UnpairedData { get; init; }
-
-        public PredictionTarget PredictionTarget { get; init; }
     }
 }
