@@ -115,7 +115,7 @@ ARG docker_final_helper_folder="/app"
 # built and published cli
 COPY --from=publish ${publish_folder_absolute} ${docker_final_helper_folder}
 
-ENV PATH=${docker_final_helper_folder}:$PATH
+ENV PATH="${docker_final_helper_folder}:${PATH}"
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 
 ENTRYPOINT []

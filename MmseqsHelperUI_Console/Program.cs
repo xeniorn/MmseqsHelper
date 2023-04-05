@@ -97,6 +97,11 @@ internal sealed class Program
         var host = hostBuilder.Build();
         var program = host.Services.GetRequiredService<MmseqsHelperService>();
 
+#if DEBUG
+        await program.ExecuteAsync(selectedMode);
+        return;
+#endif
+
         try
         {
             await program.ExecuteAsync(selectedMode);

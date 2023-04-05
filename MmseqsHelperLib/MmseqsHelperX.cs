@@ -760,7 +760,7 @@ namespace MmseqsHelperLib
             var pair1PosParams = new List<string>()
             {
                 qdbPath,
-                targetDbPathSeq,
+                targetDbPathBase,
                 pairedAlignDb,
                 pair1ResultDb,
             };
@@ -783,7 +783,7 @@ namespace MmseqsHelperLib
             var pair2PosParams = new List<string>()
             {
                 qdbPath,
-                targetDbPathSeq,
+                targetDbPathBase,
                 align2ResultDb,
                 pair2ResultDb,
             };
@@ -824,6 +824,7 @@ namespace MmseqsHelperLib
             var dbToMonoMapping = new Dictionary<string, List<Protein>>();
 
             // for each mono, which db and which index within that db it has
+            var monoToDbAndIndexMappingMulti = new Dictionary<Protein, List<(string db, int index)>>();
             var monoToDbAndIndexMapping = new Dictionary<Protein, (string db, int index)>();
 
             // actual data of each aligndb for each mono
@@ -848,12 +849,31 @@ namespace MmseqsHelperLib
                 var alreadyFound = monoToDbAndIndexMapping.Keys;
                 remainingMonos = remainingMonos.Except(alreadyFound).ToList();
 
-                await GetDbToMonoMappingsForSearchBatch(searchBatch, remainingMonos, dbToMonoMapping);
-                await GetMonoToDbAndIndexMappingsForSearchBatch(searchBatch, dbToMonoMapping, monoToDbAndIndexMapping);
-                await ReadInAlignDbFragmentsForSearchBatch(searchBatch, dbToMonoMapping, monoToDbAndIndexMapping, monoToAlignFragmentMappings);
-                await ReadInUnpairedA3mDbFragmentsForSearchBatch(searchBatch, dbToMonoMapping, monoToDbAndIndexMapping,
-                    monoToUnpairedA3mMappings);
+                // preconstruct all objects
+                {
+                    await GetDbToMonoMappingsForSearchBatch(searchBatch, remainingMonos, dbToMonoMapping);
+                    await GetMonoToDbAndIndexMappingsForSearchBatch(searchBatch, dbToMonoMapping,
+                        monoToDbAndIndexMappingMulti);
+                    foreach (var (protein, dbIndexLocations) in monoToDbAndIndexMappingMulti)
+                    {
+                        var (db, index) = dbIndexLocations.First();
+                        if (dbIndexLocations.Count > 1)
+                        {
+                            _logger.LogInformation(
+                                $"target {protein.Id} found in multiple mono databases ({dbIndexLocations.Count}), will use only the first one ({db})");
+                        }
 
+                        monoToDbAndIndexMapping.Add(protein, (db, index));
+                    }
+
+                    await ReadInAlignDbFragmentsForSearchBatch(searchBatch, dbToMonoMapping, monoToDbAndIndexMapping,
+                        monoToAlignFragmentMappings);
+                    await ReadInUnpairedA3mDbFragmentsForSearchBatch(searchBatch, dbToMonoMapping,
+                        monoToDbAndIndexMapping,
+                        monoToUnpairedA3mMappings);
+                }
+
+              
                 async Task GetDbToMonoMappingsForSearchBatch(List<string> dbLocationsToSearch, List<Protein> proteins,
                     Dictionary<string, List<Protein>> mutableDbToMonoMapping)
                 {
@@ -877,7 +897,7 @@ namespace MmseqsHelperLib
                 }
 
                 async Task GetMonoToDbAndIndexMappingsForSearchBatch(List<string> dbLocationsToSearch,
-                    Dictionary<string, List<Protein>> dbToMonoMapping, Dictionary<Protein, (string db, int index)> mutableMonoToDbAndIndexMapping)
+                    Dictionary<string, List<Protein>> dbToMonoMapping, Dictionary<Protein, List<(string db, int index)>> mutableMonoToDbAndIndexMapping)
                 {
                     var resultTasksMapping = new List<(string db, Task<List<(string id, int index)>> resultTask)>();
                     foreach (var dbLocation in dbLocationsToSearch)
@@ -886,7 +906,7 @@ namespace MmseqsHelperLib
 
                         // queue up tasks for now don't await one by one
                         var qdbPath = Path.Join(dbLocation, Settings.PersistedDbQdbName);
-                        resultTasksMapping.Add((dbLocation, GetIdsAndIndicesFoundInSequenceDbAsync(qdbPath, proteinsInThisDb.Select(x => x.Id).ToList())));
+                        resultTasksMapping.Add((dbLocation, GetHeaderAndIndexForGivenIdsInSequenceDbAsync(qdbPath, proteinsInThisDb.Select(x => x.Id).ToList())));
                     }
 
                     await Task.WhenAll(resultTasksMapping.Select(x => x.resultTask));
@@ -898,7 +918,11 @@ namespace MmseqsHelperLib
                         foreach (var (id, index) in entriesInDb)
                         {
                             var protein = proteinsInThisDb.Single(x => x.Id == id);
-                            mutableMonoToDbAndIndexMapping.Add(protein, (dbPath, index));
+                            if (!mutableMonoToDbAndIndexMapping.ContainsKey(protein))
+                            {
+                                mutableMonoToDbAndIndexMapping.Add(protein,new List<(string db, int index)>());
+                            }
+                            mutableMonoToDbAndIndexMapping[protein].Add((dbPath, index));
                         }
                     }
                 }
@@ -973,9 +997,8 @@ namespace MmseqsHelperLib
             var alignDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.Alignment_ALIGNMENT_RES);
             var qdbDataDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.Sequence_AMINO_ACIDS);
             var qdbHeaderDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.Header_GENERIC_DB);
+            var qdbLookupObject = new MmseqsLookupObject();
             var unpairedA3mDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.A3m_MSA_DB);
-
-            var qdbLookupFileFragments = new List<MmseqsLookupEntry>();
             
             //var monoToNewIdMapping = new Dictionary<Protein, int>();
             //var predictionToNewPairIdMapping = new Dictionary<PredictionTarget, int>();
@@ -996,8 +1019,8 @@ namespace MmseqsHelperLib
                     qdbHeaderDbObject.Add(Encoding.ASCII.GetBytes(protein.Id), generatedMonoIndex);
                     alignDbObject.Add(alignData, generatedMonoIndex);
                     unpairedA3mDbObject.Add(unpairedA3mData, generatedMonoIndex);
-                    qdbLookupFileFragments.Add(new MmseqsLookupEntry(generatedMonoIndex, protein.Id, generatedPredictionIndex));
-
+                    qdbLookupObject.Add(generatedMonoIndex, protein.Id, generatedPredictionIndex);
+                    
                     indexList.Add(generatedMonoIndex);
                     generatedMonoIndex++;
                 }
@@ -1008,13 +1031,15 @@ namespace MmseqsHelperLib
             
             var pairQdbDataDbPath = $"{pairedQdb}{Settings.Mmseqs2Internal_DbDataSuffix}";
             var pairQdbHeaderDbPath = $"{pairedQdb}{Settings.Mmseqs2Internal_DbHeaderSuffix}";
+            var pairQdbLookupPath = $"{pairedQdb}";
             var alignDbDataDbPath = $"{pairedAlignDb}{Settings.Mmseqs2Internal_DbDataSuffix}";
             var unpairedA3mDbDataDbPath = $"{unpairedA3mDb}{Settings.Mmseqs2Internal_DbDataSuffix}";
-
+            
             var writeTasks = new List<Task>
             {
                 qdbDataDbObject.WriteToFileSystemAsync(Settings, pairQdbDataDbPath),
                 qdbHeaderDbObject.WriteToFileSystemAsync(Settings, pairQdbHeaderDbPath),
+                qdbLookupObject.WriteToFileSystemAsync(Settings,pairQdbLookupPath),
                 alignDbObject.WriteToFileSystemAsync(Settings, alignDbDataDbPath),
                 unpairedA3mDbObject.WriteToFileSystemAsync(Settings, unpairedA3mDbDataDbPath)
             };
@@ -1050,20 +1075,26 @@ namespace MmseqsHelperLib
 
         }
 
-        private async Task<List<(string id, int index)>> GetIdsAndIndicesFoundInSequenceDbAsync(string sequenceDbPath, List<string> idsToSearch)
+        private async Task<List<(string id, int index)>> GetHeaderAndIndexForGivenIdsInSequenceDbAsync(string sequenceDbPath, List<string> idsToSearch)
         {
+            // will always grab just the first found index when there are duplicates
             var headerFile = $"{sequenceDbPath}{Settings.Mmseqs2Internal_DbHeaderSuffix}";
             var headersInFile = await GetAllHeadersInSequenceDbHeaderDbAsync(headerFile);
-            var headerToStartAndLengthMappings = new Dictionary<string, (int startOffset, int length)>();
+            var headerToStartAndLengthMappings = new Dictionary<string, List<(int startOffset, int length)>>();
 
             var startOffset = 0;
             foreach (var header in headersInFile)
             {
                 var len = header.Length + Settings.Mmseqs2Internal_DataEntrySeparator.Length;
                 // all must be enumerated to get the correct offsets, but only the selected ones get added to the list
+                // only first copy of each gets added to the list
                 if (idsToSearch.Contains(header))
                 {
-                    headerToStartAndLengthMappings.Add(header, (startOffset, len));
+                    if (!headerToStartAndLengthMappings.ContainsKey(header))
+                    {
+                        headerToStartAndLengthMappings.Add(header, new List<(int startOffset, int length)>());
+                    }
+                    headerToStartAndLengthMappings[header].Add((startOffset, len));
                 }
                 startOffset += len;
             }
@@ -1073,8 +1104,14 @@ namespace MmseqsHelperLib
 
             var result = new List<(string id, int index)>();
 
-            foreach (var (header, (offset, length)) in headerToStartAndLengthMappings)
+            foreach (var (header, matchingEntries) in headerToStartAndLengthMappings)
             {
+                if (matchingEntries.Count > 1)
+                {
+                    _logger.LogInformation($"Found multiple entries for the same header/id ({header}), will use only the first one.");
+                }
+                var (offset, length) = matchingEntries.First();
+
                 var matchedEntryIndex = headerIndexFileEntries.FindIndex(x => x.startOffset == offset && x.length == length);
                 var foundMatch = matchedEntryIndex >= 0;
                 if (foundMatch)
@@ -1142,8 +1179,6 @@ namespace MmseqsHelperLib
                 .DistinctBy(x => x.AutoIdFromConstituents).ToList();
 
             return await GetExistingAndMissingPredictionTargetsAsync(finalPredictions, existingDatabasePaths);
-
-
 
         }
 

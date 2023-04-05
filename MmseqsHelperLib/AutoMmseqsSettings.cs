@@ -29,6 +29,7 @@ public class AutoMmseqsSettings
     public string MmseqsBinaryPath { get; set; }
     public int MaxDesiredPredictionTargetBatchSize { get; set; } = 200;
     public string Mmseqs2Internal_IndexColumnSeparator { get; init; } = "\t";
+    public string Mmseqs2Internal_LookupColumnSeparator { get; init; } = "\t";
     // (data, index, dbtype) for (mono, pair_align, qdb, qdb_h) = 12, plus qdb.lookup (not needed)
     public int PersistedDbMinimalNumberOfFilesInMonoDbResult { get; init; } = 12;
     public int PairResultDatabaseSubfolderLength { get; init; } = 2;
