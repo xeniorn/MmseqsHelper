@@ -16,10 +16,15 @@ public class MmseqsLookupObject
         var separator = settings.Mmseqs2Internal_LookupColumnSeparator;
             
         var lookupPath = $"{dbPath}{settings.Mmseqs2Internal_DbLookupSuffix}";
-        var lines = Entries.Select(x =>
-            string.Join(separator, x.Value.EntryIndex, x.Value.ReferenceName, x.Value.PairingGroup));
 
-        var data = Encoding.ASCII.GetBytes(string.Join("\n", lines));
+        // 2023-04-09 DAMN no. needs a terminal newline at each line, not just between entries. Disaster.
+        //var lines = Entries.Select(x =>
+        //    string.Join(separator, x.Value.EntryIndex, x.Value.ReferenceName, x.Value.PairingGroup));
+        //var data = Encoding.ASCII.GetBytes(string.Join("\n", lines));
+
+        var lines = Entries.Select(x =>
+            string.Join(separator, x.Value.EntryIndex, x.Value.ReferenceName, x.Value.PairingGroup) + '\n');
+        var data = Encoding.ASCII.GetBytes(string.Join("", lines));
 
         await File.WriteAllBytesAsync(lookupPath, data);
             
