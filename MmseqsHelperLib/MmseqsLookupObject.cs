@@ -8,9 +8,7 @@ public class MmseqsLookupObject
     {
         Entries = new Dictionary<int, MmseqsLookupEntry>();
     }
-
-    public MmseqsDatabaseType DatabaseType { get; }
-
+    
     private Dictionary<int, MmseqsLookupEntry> Entries { get; }
         
     public async Task WriteToFileSystemAsync(AutoMmseqsSettings settings, string dbPath)

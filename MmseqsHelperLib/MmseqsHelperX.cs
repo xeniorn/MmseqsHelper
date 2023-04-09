@@ -50,8 +50,10 @@ namespace MmseqsHelperLib
 
             const string colabFold_AlignParamsMono = @"-e 10  --max-accept 1000000 --alt-ali 10 -a";
             Settings.Custom.Add("colabFold_AlignParamsMono", colabFold_AlignParamsMono);
-            const string colabFold_AlignParamsPair = @"-e 0.001  --max-accept 1000000 -c 0.5 --cov-mode 1 -a";
-            Settings.Custom.Add("colabFold_AlignParamsPair", colabFold_AlignParamsPair);
+            const string colabFold_Align1ParamsPair = @"-e 0.001  --max-accept 1000000 -c 0.5 --cov-mode 1";
+            Settings.Custom.Add("colabFold_Align1ParamsPair", colabFold_Align1ParamsPair);
+            const string colabFold_Align2ParamsPair = @"-e inf";
+            Settings.Custom.Add("colabFold_Align2ParamsPair", colabFold_Align2ParamsPair);
 
             const string colabFold_MsaConvertParamsMono = @"--msa-format-mode 6 --filter-msa 1 --filter-min-enable 1000 --diff 3000 --qid '0.0,0.2,0.4,0.6,0.8,1.0' --qsc 0 --max-seq-id 0.95";
             Settings.Custom.Add("colabFold_MsaConvertParamsMono", colabFold_MsaConvertParamsMono);
@@ -368,7 +370,7 @@ namespace MmseqsHelperLib
                 alignResultDb,
 
             };
-            await RunMmseqsAsync(alignModule, alignPosParams, $"{Settings.Custom["colabFold_AlignParamsPair"]} {Settings.Custom["performanceParams"]}");
+            await RunMmseqsAsync(alignModule, alignPosParams, $"{Settings.Custom["colabFold_Align1ParamsPair"]} {Settings.Custom["performanceParams"]}");
 
             return alignResultDb;
         }
@@ -776,7 +778,7 @@ namespace MmseqsHelperLib
                 pair1ResultDb,
                 align2ResultDb,
             };
-            await RunMmseqsAsync(alignModule, align2PosParams, $"{Settings.Custom["colabFold_AlignParamsPair"]} {Settings.Custom["performanceParams"]}");
+            await RunMmseqsAsync(alignModule, align2PosParams, $"{Settings.Custom["colabFold_Align2ParamsPair"]} {Settings.Custom["performanceParams"]}");
 
             //*******************************************pair 1*******************************************************
             var pair2ResultDb = Path.Join(localProcessingPath, $"pair2");
