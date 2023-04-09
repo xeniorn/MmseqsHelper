@@ -489,18 +489,23 @@ namespace MmseqsHelperLib
 
             var existing = new List<Protein>();
 
-            var useExistingImplemented = false;
+            var useExistingImplemented = true;
             if (useExistingImplemented)
             {
                 foreach (var existingDatabasePath in existingDatabasePaths)
                 {
-                    var filesInThisPath = Directory.GetFiles(existingDatabasePath);
+                    //var filesInThisPath = Directory.GetFiles(existingDatabasePath);
 
-                    //TODO: not yet implemented
+                    //TODO: many checks
+                    var qdbHeaderDb = Path.Join(existingDatabasePath, Settings.PersistedDbQdbName) +
+                                      $"{Settings.Mmseqs2Internal_DbHeaderSuffix}";
 
-                    var qdbSets = new List<(string data, string dataIndex, string header, string headerIndex)>();
-                    var indexFiles = filesInThisPath.Where(x =>
-                        x.EndsWith($"{Settings.PersistedDbQdbName}${Settings.Mmseqs2Internal_DbHeaderSuffix}"));
+                    var headers = await GetAllHeadersInSequenceDbHeaderDbAsync(qdbHeaderDb);
+                    var contained = proteins.Where(x => headers.Contains(Helper.GetMd5Hash(x.Sequence)));
+                    existing.AddRange(contained);
+
+                    //var qdbSets = new List<(string data, string dataIndex, string header, string headerIndex)>();
+                    //var indexFiles = filesInThisPath.Where(x => x.EndsWith($"{Settings.PersistedDbQdbName}${Settings.Mmseqs2Internal_DbHeaderSuffix}"));
                 }
 
             }
@@ -640,7 +645,28 @@ namespace MmseqsHelperLib
 
             var allMonos = missingTargets.SelectMany(x => x.UniqueProteins).DistinctBy(x => x.Sequence).ToList();
 
+            //consolidate references so there are no duplicate references referring to same protein
+            //TODO
+
             var (existingMonos, missingMonos) = await GetExistingAndMissingSetsAsync(allMonos, dbEntryFolders);
+
+            var targetsMissingMonos = missingTargets
+                .Where(x => x.UniqueProteins.Any(pr=>missingMonos.Contains(pr))).ToList();
+
+            var predictableTargets = missingTargets.Except(targetsMissingMonos).ToList();
+
+            if (targetsMissingMonos.Any())
+            {
+                _logger.LogWarning($"Some of the provided targets don't have monos required for MSA assembly {targetsMissingMonos.Count}/{missingTargets.Count})");
+            }
+
+            if (!predictableTargets.Any())
+            {
+                _logger.LogWarning("No further targets can be predicted due to missing mono predictions in the provided locations.");
+                return;
+            }
+            _logger.LogInformation($"Will generate pair results for {predictableTargets.Count} targets.");
+            
 
             var batches = GetPredictionTargetBatches(missingTargets);
 

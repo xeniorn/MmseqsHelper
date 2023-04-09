@@ -39,7 +39,8 @@ public class ColabFoldMsaObject
             lines.AddRange(GetUnpairedLines(predictionTargetUniqueProtein));
         }
 
-        return string.Join("\n", lines);
+        // don't forget the terminal newline
+        return string.Join("\n", lines) + "\n";
 
     }
 
@@ -48,12 +49,10 @@ public class ColabFoldMsaObject
         const char fastaGapSymbol = '-';
 
         var unpairedLineList = Encoding.ASCII.GetString(UnpairedData[predictionTargetUniqueProtein]).Split("\n");
-            
-        var lineParts = new List<string>();
-
+        
         var index = PredictionTarget.UniqueProteins.IndexOf(predictionTargetUniqueProtein);
-        var lengthProteinsBefore = PredictionTarget.UniqueProteins.TakeWhile((x,i)=>i<index).Select(x=>x.Sequence.Length).Sum();
-        var lengthProteinsAfter = PredictionTarget.UniqueProteins.TakeWhile((x, i) => i > index).Select(x => x.Sequence.Length).Sum();
+        var lengthProteinsBefore = PredictionTarget.UniqueProteins.Where((_,i) => i < index).Select(x => x.Sequence.Length).Sum();
+        var lengthProteinsAfter = PredictionTarget.UniqueProteins.Where((_, i) => i > index).Select(x => x.Sequence.Length).Sum();
 
         var dataPreAppendGap = new string(fastaGapSymbol, lengthProteinsBefore);
         var dataPostAppendGap = new string(fastaGapSymbol, lengthProteinsAfter);
