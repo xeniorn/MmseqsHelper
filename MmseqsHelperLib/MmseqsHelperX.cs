@@ -1,13 +1,7 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Security.Cryptography;
-using System.Text;
-using System.Xml.XPath;
+﻿using System.Text;
 using AlphafoldPredictionLib;
 using FastaHelperLib;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace MmseqsHelperLib
 {
@@ -29,6 +23,8 @@ namespace MmseqsHelperLib
         {
             _logger = logger;
             Settings = inputSettings ?? GetDefaultSettings();
+
+            //TODO: make all this proper config subobjects, not "custom" like this. Settings.Colabfold.SearchParamsShared, etc
 
             #region HardcodedSetup
             const string colabFold_SearchParamsShared = @"--num-iterations 3 -a -s 8 -e 0.1 --max-seqs 10000";
@@ -76,6 +72,21 @@ namespace MmseqsHelperLib
         {
             var excludedIdList = excludedIds.ToList();
             var (existingTargets, missingTargets) = await GetExistingAndMissingSetsAsync(inputFastaPaths, existingDatabasePaths, excludedIdList);
+
+            var total = existingTargets.Count + missingTargets.Count;
+
+            if (existingTargets.Any())
+            {
+                _logger.LogInformation($"Some monos ({existingTargets.Count}/{total}) have existing results, will skip.");
+            }
+
+            if (!missingTargets.Any())
+            {
+                _logger.LogInformation("All input monos already have existing results.");
+                return;
+            }
+
+            _logger.LogInformation($"Running predictions for {missingTargets.Count} monos.");
 
             var batches = GetBatches(missingTargets);
 
@@ -451,7 +462,7 @@ namespace MmseqsHelperLib
             }
         }
 
-        private async Task<(List<Protein> existing, List<Protein> missing)> GetExistingAndMissingSetsAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> existingDatabasePaths, IEnumerable<string> excludeIds)
+        private async Task<(List<Protein> existing, List<Protein> missing)> GetExistingAndMissingSetsAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> existingDatabaseLocations, IEnumerable<string> excludeIds)
         {
             var uniqueProteins = new HashSet<Protein>(new ProteinByIdComparer());
 
@@ -476,14 +487,16 @@ namespace MmseqsHelperLib
                 }
             }
 
+            var dbPaths = await GetDbEntryFoldersAsync(existingDatabaseLocations.ToList());
+
             var (existing, missing) =
-                await GetExistingAndMissingSetsAsync(uniqueProteins, existingDatabasePaths);
+                await GetExistingAndMissingSetsAsync(uniqueProteins, dbPaths);
 
             return (existing, missing);
 
         }
 
-        private async Task<(List<Protein> existing, List<Protein> missing)> GetExistingAndMissingSetsAsync(IEnumerable<Protein> iproteins, IEnumerable<string> existingDatabasePaths)
+        private async Task<(List<Protein> existing, List<Protein> missing)> GetExistingAndMissingSetsAsync(IEnumerable<Protein> iproteins, IEnumerable<string> existingDatabaseLocations)
         {
             var proteins = new HashSet<Protein>(iproteins, new ProteinByIdComparer());
 
@@ -492,7 +505,7 @@ namespace MmseqsHelperLib
             var useExistingImplemented = true;
             if (useExistingImplemented)
             {
-                foreach (var existingDatabasePath in existingDatabasePaths)
+                foreach (var existingDatabasePath in existingDatabaseLocations)
                 {
                     //var filesInThisPath = Directory.GetFiles(existingDatabasePath);
 
@@ -668,7 +681,7 @@ namespace MmseqsHelperLib
             _logger.LogInformation($"Will generate pair results for {predictableTargets.Count} targets.");
             
 
-            var batches = GetPredictionTargetBatches(missingTargets);
+            var batches = GetPredictionTargetBatches(predictableTargets);
 
             foreach (var targetBatch in batches)
             {
@@ -1181,6 +1194,8 @@ namespace MmseqsHelperLib
 
         private async Task<(List<PredictionTarget> existing, List<PredictionTarget> missing)> GetExistingAndMissingPredictionTargetsAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> existingDatabasePaths, IEnumerable<string> excludeIds)
         {
+            //TODO: add actual hash-based exclusion of existing MSA, double check and make solid all the code related to this
+
             var uniqueInputFastaEntries = new HashSet<PredictionTarget>(new PredictionTargetByIdComparer());
 
             var excludedList = excludeIds.ToList();
