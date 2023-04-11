@@ -1030,25 +1030,24 @@ public class ColabfoldMmseqsHelper
 
     private async Task<(List<Protein> existing, List<Protein> missing)> GetExistingAndMissingSetsAsync(IEnumerable<Protein> iproteins, IEnumerable<string> existingDatabaseLocations)
     {
-        var proteins = new HashSet<Protein>(iproteins, new ProteinByIdComparer());
+        var proteins = new List<Protein>(iproteins);
 
         var existing = new List<Protein>();
-
-        var useExistingImplemented = true;
-        if (useExistingImplemented)
+        
+        foreach (var existingDatabasePath in existingDatabaseLocations)
         {
-            foreach (var existingDatabasePath in existingDatabaseLocations)
-            {
-                //TODO: many checks - whether the sequence matches, whether the other stuff apart from qdb exists, ...
-                var qdbHeaderDb = Path.Join(existingDatabasePath, Settings.PersistedDbQdbName) +
-                                  $"{Mmseqs.Settings.Mmseqs2Internal_DbHeaderSuffix}";
+            if (!proteins.Any()) break;
 
-                var headers = await Mmseqs.GetAllHeadersInSequenceDbHeaderDbAsync(qdbHeaderDb);
-                var contained = proteins.Where(x => headers.Contains(Helper.GetMd5Hash(x.Sequence)));
-                existing.AddRange(contained);
-            }
+            //TODO: many checks - whether the sequence matches, whether the other stuff apart from qdb exists, ...
+            var qdbHeaderDb = Path.Join(existingDatabasePath, Settings.PersistedDbQdbName) +
+                              $"{Mmseqs.Settings.Mmseqs2Internal_DbHeaderSuffix}";
 
+            var headers = await Mmseqs.GetAllHeadersInSequenceDbHeaderDbAsync(qdbHeaderDb);
+            var contained = proteins.Where(x => headers.Contains(Helper.GetMd5Hash(x.Sequence))).ToList();
+            existing.AddRange(contained);
+            proteins = proteins.Except(existing).ToList();
         }
+        
 
         var missing = proteins.Except(existing).ToList();
 
