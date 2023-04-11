@@ -162,7 +162,6 @@ public class ColabfoldMmseqsHelper
                         else
                         {
                             monos.Add(protein);
-                            rectifiedPrediction.UniqueProteins.Add(protein);
                         }
                     }
 
@@ -324,7 +323,7 @@ public class ColabfoldMmseqsHelper
             searchResultDb,
             tempSubfolderForSearch
         };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.searchModule, searchPosParams, $"{Settings.Custom["colabFold_SearchParamsShared"]} {Mmseqs.PerformanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.searchModule, searchPosParams, $"{Settings.ColabFold_SearchParamsShared} {Mmseqs.PerformanceParams}");
 
         //*******************************************expand*******************************************************
         var expandResultDb = Path.Join(localProcessingPath, $"expand");
@@ -336,7 +335,7 @@ public class ColabfoldMmseqsHelper
             targetDbPathAln,
             expandResultDb
         };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.expandModule, expandPosParams, $"{Settings.Custom["colabFold_ExpandParamsEnvMono"]} {Mmseqs.PerformanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.expandModule, expandPosParams, $"{Settings.ColabFold_ExpandParamsEnvMono} {Mmseqs.PerformanceParams}");
 
         //*******************************************align*******************************************************
         var alignResultDb = Path.Join(localProcessingPath, $"align");
@@ -347,7 +346,7 @@ public class ColabfoldMmseqsHelper
             expandResultDb,
             alignResultDb,
         };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.alignModule, alignPosParams, $"{Settings.Custom["colabFold_AlignParamsMono"]} {Mmseqs.PerformanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.alignModule, alignPosParams, $"{Settings.ColabFold_AlignParamsMono} {Mmseqs.PerformanceParams}");
 
         //*******************************************filter*******************************************************
         var filterResultDb = Path.Join(localProcessingPath, $"filter");
@@ -358,7 +357,7 @@ public class ColabfoldMmseqsHelper
             alignResultDb,
             filterResultDb,
         };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.filterModule, filterPosParams, $"{Settings.Custom["colabFold_FilterParams"]} {Mmseqs.PerformanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.filterModule, filterPosParams, $"{Settings.ColabFold_FilterParams} {Mmseqs.PerformanceParams}");
 
         //*******************************************convert*******************************************************
         var msaConvertResultDb = Path.Join(localProcessingPath, $"env_a3m");
@@ -369,7 +368,7 @@ public class ColabfoldMmseqsHelper
             filterResultDb,
             msaConvertResultDb,
         };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.msaConvertModule, msaConvertPosParams, $"{Settings.Custom["colabFold_MsaConvertParamsMono"]} {Mmseqs.PerformanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.msaConvertModule, msaConvertPosParams, $"{Settings.ColabFold_MsaConvertParamsMono} {Mmseqs.PerformanceParams}");
 
         return msaConvertResultDb;
     }
@@ -453,8 +452,7 @@ public class ColabfoldMmseqsHelper
         };
 
         await Task.WhenAll(copyTasks);
-
-
+        
         LogSomething(finalPathQdb);
         LogSomething(finalPathMonos);
         LogSomething(finalPathPair);
@@ -725,7 +723,7 @@ public class ColabfoldMmseqsHelper
             targetDbPathAln,
             expandResultDb
         };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.expandModule, expandPosParams, $"{Settings.Custom["colabFold_ExpandParamsUnirefPair"]} {Mmseqs.PerformanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.expandModule, expandPosParams, $"{Settings.ColabFold_ExpandParamsUnirefPair} {Mmseqs.PerformanceParams}");
 
         //*******************************************align*******************************************************
         var alignResultDb = Path.Join(localProcessingPath, Settings.PersistedDbPairModeFirstAlignDbName);
@@ -737,7 +735,7 @@ public class ColabfoldMmseqsHelper
             alignResultDb,
 
         };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.alignModule, alignPosParams, $"{Settings.Custom["colabFold_Align1ParamsPair"]} {Mmseqs.PerformanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.alignModule, alignPosParams, $"{Settings.ColabFold_Align1ParamsPair} {Mmseqs.PerformanceParams}");
 
         return alignResultDb;
     }
@@ -760,7 +758,7 @@ public class ColabfoldMmseqsHelper
             targetDbPathAln,
             expandResultDb
         };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.expandModule, expandPosParams, $"{Settings.Custom["colabFold_ExpandParamsUnirefMono"]} {Mmseqs.PerformanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.expandModule, expandPosParams, $"{Settings.ColabFold_ExpandParamsUnirefMono} {Mmseqs.PerformanceParams}");
 
         //*******************************************align*******************************************************
         var alignResultDb = Path.Join(localProcessingPath, $"align");
@@ -771,7 +769,7 @@ public class ColabfoldMmseqsHelper
             expandResultDb,
             alignResultDb,
         };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.alignModule, alignPosParams, $"{Settings.Custom["colabFold_AlignParamsMono"]} {Mmseqs.PerformanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.alignModule, alignPosParams, $"{Settings.ColabFold_AlignParamsMono} {Mmseqs.PerformanceParams}");
 
         //*******************************************filter*******************************************************
         var filterResultDb = Path.Join(localProcessingPath, $"filter");
@@ -782,7 +780,7 @@ public class ColabfoldMmseqsHelper
             alignResultDb,
             filterResultDb,
         };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.filterModule, filterPosParams, $"{Settings.Custom["colabFold_FilterParams"]} {Mmseqs.PerformanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.filterModule, filterPosParams, $"{Settings.ColabFold_FilterParams} {Mmseqs.PerformanceParams}");
 
         //*******************************************convert*******************************************************
         var msaConvertResultDb = Path.Join(localProcessingPath, $"uniref_mono_a3m");
@@ -793,7 +791,7 @@ public class ColabfoldMmseqsHelper
             filterResultDb,
             msaConvertResultDb,
         };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.msaConvertModule, msaConvertPosParams, $"{Settings.Custom["colabFold_MsaConvertParamsMono"]} {Mmseqs.PerformanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.msaConvertModule, msaConvertPosParams, $"{Settings.ColabFold_MsaConvertParamsMono} {Mmseqs.PerformanceParams}");
 
         return msaConvertResultDb;
 
@@ -828,7 +826,7 @@ public class ColabfoldMmseqsHelper
             pair1ResultDb,
             align2ResultDb,
         };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.alignModule, align2PosParams, $"{Settings.Custom["colabFold_Align2ParamsPair"]} {Mmseqs.PerformanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.alignModule, align2PosParams, $"{Settings.ColabFold_Align2ParamsPair} {Mmseqs.PerformanceParams}");
 
         //*******************************************pair 1*******************************************************
         var pair2ResultDb = Path.Join(localProcessingPath, $"pair2");
@@ -850,7 +848,7 @@ public class ColabfoldMmseqsHelper
             pair2ResultDb,
             msaConvertResultDb,
         };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.msaConvertModule, msaConvertPosParams, $"{Settings.Custom["colabFold_MsaConvertParamsPair"]} {Mmseqs.PerformanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.msaConvertModule, msaConvertPosParams, $"{Settings.ColabFold_MsaConvertParamsPair} {Mmseqs.PerformanceParams}");
 
         return msaConvertResultDb;
     }
@@ -866,7 +864,7 @@ public class ColabfoldMmseqsHelper
 
         var searchResultDb = Path.Join(processingFolderRoot, $"search");
         var searchPosParams = new List<string>() { qdbPath, Settings.Custom["UniprotDbPath"], searchResultDb, tempSubfolderForUniprotSearch };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.searchModule, searchPosParams, $"{Settings.Custom["colabFold_SearchParamsShared"]} {Mmseqs.PerformanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.searchModule, searchPosParams, $"{Settings.ColabFold_SearchParamsShared} {Mmseqs.PerformanceParams}");
 
         //*******************************************hack up a profile db*******************************************************
         var profileResultDbOriginal = Path.Join(tempSubfolderForUniprotSearch, expectedGeneratedProfileSubPath);
@@ -957,6 +955,12 @@ public class ColabfoldMmseqsHelper
         // each separate database location that has actual entries inside
         foreach (var location in existingDatabaseLocations)
         {
+            if (!Directory.Exists(location))
+            {
+                _logger.LogWarning($"Provided location does not exist: {location}");
+                continue;
+            }
+
             // they are organized in subfolders containing the first x symbols of the hash (x=2 2023-04-11 by default, defined in Settings)
             var foldersInThisPath = Directory.GetDirectories(location);
 
@@ -968,7 +972,7 @@ public class ColabfoldMmseqsHelper
                 foreach (var file in filesInThisPath)
                 {
                     if (!analyzedSet.Any()) goto GOTO_MARK_FINALIZE;
-                    var index = analyzedSet.FindIndex(x => x.expectedFilename.Equals(file));
+                    var index = analyzedSet.FindIndex(x => x.expectedFilename.Equals(Path.GetFileName(file)));
                     var found = index >= 0;
                     if (found)
                     {
@@ -992,6 +996,12 @@ public class ColabfoldMmseqsHelper
 
         foreach (var inputFastaPath in inputFastaPaths)
         {
+            if (!File.Exists(inputFastaPath))
+            {
+                _logger.LogWarning($"Provided input path does not exist, will skip it: {inputFastaPath}");
+                continue;
+            }
+
             var stream = File.OpenRead(inputFastaPath);
             var fastas = await FastaHelper.GetFastaEntriesIfValidAsync(stream, SequenceType.Protein);
             if (fastas is not null && fastas.Any())
