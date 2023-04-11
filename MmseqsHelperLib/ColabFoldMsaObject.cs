@@ -12,10 +12,7 @@ public class ColabFoldMsaObject
         UnpairedData = unpairedData;
         PredictionTarget = predictionTarget;
 
-        var individualSequenceHashes = PredictionTarget.UniqueProteins.Select(x => Helper.GetMd5Hash(x.Sequence));
-        var sequenceBasedHashBasis = string.Join(":", individualSequenceHashes);
-        HashId = Helper.GetMd5Hash(sequenceBasedHashBasis);
-
+        HashId = Helper.GetAutoHashIdWithoutMultiplicity(predictionTarget);
     }
 
     public string HashId { get; }

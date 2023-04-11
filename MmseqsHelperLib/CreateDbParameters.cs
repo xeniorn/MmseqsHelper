@@ -1,6 +1,6 @@
 ﻿namespace MmseqsHelperLib;
 
-internal class CreateDbParameters : MmseqsCommandLineParameters
+public class CreateDbParameters : MmseqsCommandLineParameters
 {
     public CreateDbParameters()
     {

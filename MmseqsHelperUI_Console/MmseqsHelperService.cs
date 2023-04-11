@@ -6,10 +6,10 @@ namespace MmseqsHelperUI_Console;
 
 internal sealed class MmseqsHelperService
 {
-    private readonly ILogger<MmseqsHelper> _logger;
+    private readonly ILogger<ColabfoldMmseqsHelper> _logger;
     private readonly IConfiguration _configuration;
 
-    public MmseqsHelperService(ILogger<MmseqsHelper> logger, IConfiguration configuration)
+    public MmseqsHelperService(ILogger<ColabfoldMmseqsHelper> logger, IConfiguration configuration)
     {
         _logger = logger;
 
@@ -33,14 +33,18 @@ internal sealed class MmseqsHelperService
             throw new ArgumentException(message);
         }
 
-        var settings = new AutoMmseqsSettings();
+        var settings = new AutoColabfoldMmseqsSettings();
+        var mmseqsSettings = new MmseqsSettings();
+
+        mmseqsSettings.MmseqsBinaryPath = _configuration["MmseqsBinaryPath"]; //?? "/path/to/binary/mmseqs";
+        mmseqsSettings.TempPath = _configuration["TempPath"]; //?? "/path/to/temp";
+        var mmseqsHelper = new MmseqsHelper(mmseqsSettings, _logger);
 
         if (mode.Process == MmseqsAutoProcess.GenerateMonoDbs)
         {
            
             settings.Custom.Add("UniprotDbPath", _configuration["UniprotDbPath"]); //?? "/path/to/uniprotdb");
             settings.Custom.Add("EnvDbPath", _configuration["EnvDbPath"]); //?? "/path/to/envdb");
-            settings.MmseqsBinaryPath = _configuration["MmseqsBinaryPath"]; //?? "/path/to/binary/mmseqs";
             settings.TempPath = _configuration["TempPath"]; //?? "/path/to/temp";
 
             var inputFastaPaths = _configuration["InputFastaPaths"]?.Split(',') ?? Array.Empty<string>();
@@ -55,13 +59,12 @@ internal sealed class MmseqsHelperService
                 excludedIds = (await File.ReadAllLinesAsync(excludedIdsFilePath)).Select(x => x.Trim()).ToList();
             }
 
-            var a = new MmseqsHelperLib.MmseqsHelper(settings, _logger);
+            var a = new MmseqsHelperLib.ColabfoldMmseqsHelper(settings, _logger, mmseqsHelper);
             await a.AutoCreateColabfoldMonoDbsFromFastasAsync(inputFastaPaths, dbPaths, excludedIds, outPath);
         }
         else if (mode.Process == MmseqsAutoProcess.GenerateA3mFilesForColabfold)
         {
             settings.Custom.Add("UniprotDbPath", _configuration["UniprotDbPath"]); //?? "/path/to/uniprotdb");
-            settings.MmseqsBinaryPath = _configuration["MmseqsBinaryPath"]; //?? "/path/to/binary/mmseqs";
             settings.TempPath = _configuration["TempPath"]; //?? "/path/to/temp";
 
             var inputFastaPaths = _configuration["InputFastaPaths"]?.Split(',') ?? Array.Empty<string>();
@@ -77,8 +80,8 @@ internal sealed class MmseqsHelperService
                 excludedIds = (await File.ReadAllLinesAsync(excludedIdsFilePath)).Select(x => x.Trim()).ToList();
             }
 
-            var a = new MmseqsHelperLib.MmseqsHelper(settings, _logger);
-            await a.AutoCreateColabfoldA3msFromFastasGivenExistingMonoDbsAsync(inputFastaPaths, dbPaths, excludedIds, outPath, a3mPaths);
+            var a = new MmseqsHelperLib.ColabfoldMmseqsHelper(settings, _logger, mmseqsHelper);
+            await a.GenerateA3msFromFastasGivenExistingMonoDbsAsync(inputFastaPaths, dbPaths, excludedIds, outPath, a3mPaths);
         }
 
     }

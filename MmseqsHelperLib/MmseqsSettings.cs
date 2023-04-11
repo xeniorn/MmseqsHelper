@@ -1,40 +1,33 @@
 ﻿namespace MmseqsHelperLib;
 
-public class AutoMmseqsSettings
+public class MmseqsSettings
 {
-    public string PersistedDbFinalA3mExtension { get; init; } = @".a3m";
-    public string PersistedDbQdbName { get; init; } = @"qdb";
-    public string PersistedDbPairModeFirstAlignDbName { get; init; } = @"for_pairing_align_mmseqsdb";
-    public string PersistedDbMonoModeResultDbName { get; init; } = @"final_mono_a3m_mmseqsdb";
+    public bool PreLoadDb { get; init; } = false;
 
-    //public string QdbRepositorySubPath { get; init; } = "qdbs";
-    //public string PairDbRepositorySubPath { get; init; } = "for_pairing_aligned_dbs";
-    //public string MonoDbRepositorySubPath { get; init; } = "mono_dbs";
-
-    public string TempPath { get; set; } = Path.GetTempPath();
     public string Mmseqs2Internal_DbHeaderSuffix { get; init; } = @"_h";
     public string Mmseqs2Internal_DbDataSuffix { get; init; } = String.Empty;
     public string Mmseqs2Internal_DbIndexSuffix { get; init; } = @".index";
-    public string Mmseqs2Internal_DbLookupSuffix { get; init; }  = @".lookup";
+    public string Mmseqs2Internal_DbLookupSuffix { get; init; } = @".lookup";
     public string Mmseqs2Internal_DbTypeSuffix { get; init; } = @".dbtype";
     public string Mmseqs2Internal_ExpectedSeqDbSuffix => PreLoadDb ? ".idx" : "_seq";
     public string Mmseqs2Internal_ExpectedAlnDbSuffix => PreLoadDb ? ".idx" : "_aln";
+
     // manual says only \0 is the separator, but they always use newlines too, and terminal newline does not seem to be a part of the entry... so use it like this for now
+    // it all really breaks apart when this stuff isn't exact. All entries must be \n terminated for realz.
     public string Mmseqs2Internal_DataEntrySeparator { get; init; } = "\n\0";
-    public string FastaSuffix { get; init; } = @".fasta";
-    public Dictionary<string, string> Custom { get; init; } = new();
-    public int ThreadCount { get; init; } = 1;
-    public bool PreLoadDb { get; init; } = false;
-    public int MaxDesiredBatchSize { get; init; } = 1600;
-    public string MmseqsBinaryPath { get; set; }
-    public int MaxDesiredPredictionTargetBatchSize { get; set; } = 200;
     public string Mmseqs2Internal_IndexColumnSeparator { get; init; } = "\t";
     public string Mmseqs2Internal_LookupColumnSeparator { get; init; } = "\t";
-    // (data, index, dbtype) for (mono, pair_align, qdb, qdb_h) = 12, plus qdb.lookup (not needed)
-    public int PersistedDbMinimalNumberOfFilesInMonoDbResult { get; init; } = 12;
-    public int PairResultDatabaseSubfolderLength { get; init; } = 2;
+    public string Mmseqs2Internal_IndexEntryTerminator { get; init; } = "\n";
+    public string Mmseqs2Internal_LookupEntryTerminator { get; init; } = "\n";
+    
+    public string TempPath { get; set; } = Path.GetTempPath();
 
-    public Dictionary<string,string> PossibleDbExtensions()
+    public string MmseqsBinaryPath { get; set; }
+
+    public int ThreadCount { get; init; } = 1;
+    
+
+    public Dictionary<string, string> PossibleDbExtensions()
     {
         return new Dictionary<string, string>()
         {

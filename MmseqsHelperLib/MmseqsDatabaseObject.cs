@@ -30,7 +30,7 @@ public class MmseqsDatabaseObject
         Entries.Add(targetIndex, data);
     }
 
-    public async Task WriteToFileSystemAsync(AutoMmseqsSettings settings, string dbPath)
+    public async Task WriteToFileSystemAsync(MmseqsSettings settings, string dbPath)
     {
         var aggregateOffset = 0;
 
@@ -97,7 +97,7 @@ public class MmseqsDatabaseObject
 
     }
 
-    private byte[] GenerateMmseqsEntryLine(MmseqsIndexEntry mmseqsIndexEntry, AutoMmseqsSettings settings)
+    private byte[] GenerateMmseqsEntryLine(MmseqsIndexEntry mmseqsIndexEntry, MmseqsSettings settings)
     {
         var separator = settings.Mmseqs2Internal_IndexColumnSeparator;
         var resultString = string.Join(separator, mmseqsIndexEntry.Index, mmseqsIndexEntry.StartOffset,

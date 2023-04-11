@@ -1,6 +1,6 @@
 ﻿namespace MmseqsHelperLib;
 
-internal class CommandLineParameters
+public class CommandLineParameters
 {
     public CommandLineParameters()
     {

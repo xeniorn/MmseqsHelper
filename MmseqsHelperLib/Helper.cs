@@ -1,5 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Text;
+using AlphafoldPredictionLib;
+using FastaHelperLib;
 
 namespace MmseqsHelperLib;
 
@@ -86,5 +88,48 @@ public static partial class Helper
         var hashBytes = md5.ComputeHash(inputBytes);
 
         return Convert.ToHexString(hashBytes);
+    }
+
+    public static string EnsureQuotedIfWhiteSpace(string input)
+    {
+        if (!HasWhitespace(input)) return input;
+        return IsQuoted(input) ? input : $"\"{input}\"";
+    }
+
+    private static bool HasWhitespace(string input) => input.Any(x => Char.IsWhiteSpace(x));
+    private static bool IsQuoted(string input) => input.Length > 2 && input.First() == '"' && input.Last() == '"';
+
+    public static string GetAutoHashIdWithoutMultiplicity(PredictionTarget predictionTarget)
+    {
+        var standardSortedPredictionTarget = Helper.GetStandardSortedPredictionTarget(predictionTarget);
+        var orderedSequences = standardSortedPredictionTarget.UniqueProteins.Select(x=>x.Sequence);
+
+        var individualSequenceHashes = orderedSequences.Select(Helper.GetMd5Hash);
+        var sequenceBasedHashBasis = string.Join("", individualSequenceHashes);
+        var hashId = Helper.GetMd5Hash(sequenceBasedHashBasis);
+
+        return hashId;
+    }
+
+    public static PredictionTarget GetStandardSortedPredictionTarget(PredictionTarget predictionTarget)
+    {
+        var protWithCount = new List<(Protein protein, int multiplicity)>();
+        for (var i = 0; i < predictionTarget.UniqueProteins.Count; i++)
+        {
+            var sourceSeq = predictionTarget.UniqueProteins[i].Sequence.ToUpper();
+            var protein = new Protein() { Id = GetMd5Hash(sourceSeq), Sequence = sourceSeq };
+            protWithCount.Add((protein, predictionTarget.Multiplicities[i]));
+        }
+
+        var sorted = protWithCount
+            .OrderByDescending(x=>x.protein.Sequence.Length)
+            .ThenBy(x=>x.protein.Sequence).ToList();
+
+        var result = new PredictionTarget() {UserProvidedId = predictionTarget.UserProvidedId};
+
+        sorted.ForEach(x=> result.AppendProtein(x.protein, x.multiplicity));
+        
+        return result;
+
     }
 }

@@ -1,6 +1,6 @@
 ﻿namespace MmseqsHelperLib
 {
-    internal interface ICommandLineParameter
+    public interface ICommandLineParameter
     {
         public Type Type { get; }
         public string Flag { get; }

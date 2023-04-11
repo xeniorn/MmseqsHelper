@@ -11,7 +11,7 @@ public class MmseqsLookupObject
     
     private Dictionary<int, MmseqsLookupEntry> Entries { get; }
         
-    public async Task WriteToFileSystemAsync(AutoMmseqsSettings settings, string dbPath)
+    public async Task WriteToFileSystemAsync(MmseqsSettings settings, string dbPath)
     {
         var separator = settings.Mmseqs2Internal_LookupColumnSeparator;
             
