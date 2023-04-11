@@ -193,7 +193,7 @@ public class ColabfoldMmseqsHelper
             _logger.LogInformation($"Some inputs ({duplicateTargets.Count}) map to identical predictions, those will be skipped.");
         }
 
-        if (duplicateTargets.Any())
+        if (skippedTargets.Any())
         {
             _logger.LogInformation($"Some inputs ({skippedTargets.Count}) were excluded based on the provided exclusion id list.");
         }
