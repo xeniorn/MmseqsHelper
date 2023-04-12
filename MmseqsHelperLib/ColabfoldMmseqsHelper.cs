@@ -347,57 +347,26 @@ public class ColabfoldMmseqsHelper
     private async Task<MmseqsDbLocator> AutoUniprotConstructPairQdbAndAlignDbAndUnpairA3mDbFromMonoDbsAsync(
         string workingDir, List<string> persistedMonoDatabasesPaths, List<PredictionTarget> predictionBatch)
     {
-
         Directory.CreateDirectory(workingDir);
-        var locator = new MmseqsDbLocator();
 
         // should already be rectified on input, so should be ok to use distinct by reference
         var targetMonos = predictionBatch.SelectMany(x => x.UniqueProteins).Distinct().ToList();
 
-        var generatedMonoIndex = 0;
-        var generatedPredictionIndex = 0;
-
-        var qdbDataDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.Sequence_AMINO_ACIDS);
-        var qdbHeaderDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.Header_GENERIC_DB);
-        var qdbLookupObject = new MmseqsLookupObject();
+        var (mmseqsDatabase,locator) = GenerateQdbAndLocatorForPredictionBatch(predictionBatch, workingDir);
         
-        //******************************************* generate new qdb *******************************************************
-        foreach (var predictionTarget in predictionBatch)
-        {
-            var indexList = new List<int>();
-
-            foreach (var protein in predictionTarget.UniqueProteins)
-            {
-                qdbDataDbObject.Add(Encoding.ASCII.GetBytes(protein.Sequence), generatedMonoIndex);
-                qdbHeaderDbObject.Add(Encoding.ASCII.GetBytes(protein.Id), generatedMonoIndex);
-                qdbLookupObject.Add(generatedMonoIndex, protein.Id, generatedPredictionIndex);
-
-                indexList.Add(generatedMonoIndex);
-                generatedMonoIndex++;
-            }
-
-            locator.QdbIndicesMapping.Add(predictionTarget, indexList);
-            generatedPredictionIndex++;
-        }
-
-        var pairedQdb = Path.Join(workingDir, "qdb");
-        var pairQdbDataDbPath = $"{pairedQdb}{Mmseqs.Settings.Mmseqs2Internal_DbDataSuffix}";
-        var pairQdbHeaderDbPath = $"{pairedQdb}{Mmseqs.Settings.Mmseqs2Internal_DbHeaderSuffix}";
-        var pairQdbLookupPath = $"{pairedQdb}";
-
         var writeTasks = new List<Task>
         {
-            qdbDataDbObject.WriteToFileSystemAsync(Mmseqs.Settings, pairQdbDataDbPath),
-            qdbHeaderDbObject.WriteToFileSystemAsync(Mmseqs.Settings, pairQdbHeaderDbPath),
-            qdbLookupObject.WriteToFileSystemAsync(Mmseqs.Settings, pairQdbLookupPath)
+            mmseqsDatabase.WriteToFileSystemAsync(Mmseqs.Settings)
         };
+        //******************************************* generate new qdb *******************************************************
+
 
 
         //*******************************************figure out which mono dbs contain relevant entries at which indices*******************************************************
         //******************************************* and read in relevant fragments of align files*******************************************************
 
         //******************************************* check which persisted dbs used each target mono and have the desired features *******************************************************
-        
+
         const int hardcodedSearchBatchSize = 20;
         var existingDbParallelSearchBatchSize = hardcodedSearchBatchSize;
 
@@ -684,6 +653,53 @@ public class ColabfoldMmseqsHelper
 
         await Task.WhenAll(writeTasks);
         return locator;
+    }
+
+    private (MmseqsQueryDatabaseContainer, MmseqsDbLocator) GenerateQdbAndLocatorForPredictionBatch(List<PredictionTarget> predictionBatch, string workingDir)
+    {
+        var mmseqsQueryDatabase = new MmseqsQueryDatabaseContainer();
+        var locator = new MmseqsDbLocator();
+
+        var generatedMonoIndex = 0;
+        var generatedPredictionIndex = 0;
+
+        var qdbDataDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.Sequence_AMINO_ACIDS);
+        var qdbHeaderDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.Header_GENERIC_DB);
+        var qdbLookupObject = new MmseqsLookupObject();
+
+        foreach (var predictionTarget in predictionBatch)
+        {
+            var indexList = new List<int>();
+
+            foreach (var protein in predictionTarget.UniqueProteins)
+            {
+                qdbDataDbObject.Add(Encoding.ASCII.GetBytes(protein.Sequence), generatedMonoIndex);
+                qdbHeaderDbObject.Add(Encoding.ASCII.GetBytes(protein.Id), generatedMonoIndex);
+                qdbLookupObject.Add(generatedMonoIndex, protein.Id, generatedPredictionIndex);
+
+                indexList.Add(generatedMonoIndex);
+                generatedMonoIndex++;
+            }
+
+            locator.QdbIndicesMapping.Add(predictionTarget, indexList);
+            generatedPredictionIndex++;
+        }
+        
+        mmseqsQueryDatabase.DataDbObject = qdbDataDbObject;
+        mmseqsQueryDatabase.HeaderDbObject = qdbHeaderDbObject;
+        mmseqsQueryDatabase.LookupObject = qdbLookupObject;
+
+        var pairedQdb = Path.Join(workingDir, "qdb");
+        var pairQdbDataDbPath = $"{pairedQdb}{Mmseqs.Settings.Mmseqs2Internal_DbDataSuffix}";
+        var pairQdbHeaderDbPath = $"{pairedQdb}{Mmseqs.Settings.Mmseqs2Internal_DbHeaderSuffix}";
+        var pairQdbLookupPath = $"{pairedQdb}";
+
+        mmseqsQueryDatabase.Path = pairedQdb;
+        mmseqsQueryDatabase.DataDbPath = pairQdbDataDbPath;
+        mmseqsQueryDatabase.HeaderDbPath = pairQdbHeaderDbPath;
+        mmseqsQueryDatabase.LookupPath = pairQdbLookupPath;
+
+        return (mmseqsQueryDatabase, locator);
     }
 
     private async Task<Dictionary<Protein, List<(string dbLocation, List<int> qdbIndices)>>> GetMonoToDbAndIndexMappingsForSearchBatch(List<string> dbLocationsToSearch, List<Protein> proteins)
@@ -1268,6 +1284,32 @@ public class ColabfoldMmseqsHelper
         }
     }
 
+}
+
+internal class MmseqsQueryDatabaseContainer
+{
+    public MmseqsDatabaseObject DataDbObject { get; set; }
+    public MmseqsDatabaseObject HeaderDbObject { get; set; }
+    public MmseqsLookupObject LookupObject { get; set; }
+    public string Path { get; set; }
+    public string DataDbPath { get; set; }
+    public string HeaderDbPath { get; set; }
+    public string LookupPath { get; set; }
+
+    public async Task WriteToFileSystemAsync(MmseqsSettings settings, string basePath)
+    {
+
+
+        var writeTasks = new List<Task>()
+        {
+            DataDbObject.WriteToFileSystemAsync(settings, pairQdbDataDbPath),
+            HeaderDbObject.WriteToFileSystemAsync(settings, pairQdbHeaderDbPath),
+            LookupObject.WriteToFileSystemAsync(settings, pairQdbLookupPath)
+        };
+
+        await Task.WhenAll(writeTasks);
+
+    }
 }
 
 internal record MmseqsPersistedMonoDbEntry(Protein Mono, string DatabaseName, ColabfoldMsaDataType SourceType)
