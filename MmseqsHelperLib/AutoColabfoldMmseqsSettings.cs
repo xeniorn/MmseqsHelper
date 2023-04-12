@@ -2,7 +2,9 @@
 
 public class AutoColabfoldMmseqsSettings
 {
-    public string PersistedDbFinalA3mExtension { get; init; } = @".a3m";
+    public int PersistedA3mDbShortBatchIdLength { get; init; } = 8; // subset of MD5 hash to use as a3m prediction id
+    public string PersistedDbFinalA3mInfoName { get; init; } = @"msa_info.json";
+    public string PersistedDbFinalA3mName { get; init; } = @"msa.a3m";
     public string PersistedDbQdbName { get; init; } = @"qdb";
     public string PersistedDbPairModeFirstAlignDbName { get; init; } = @"for_pairing_align_mmseqsdb";
     public string PersistedDbMonoModeResultDbName { get; init; } = @"final_mono_a3m_mmseqsdb";
@@ -32,6 +34,7 @@ public class AutoColabfoldMmseqsSettings
     public string ColabFold_MsaConvertParamsMono { get; init; } = colabFold_MsaConvertParamsMono;
     public string ColabFold_MsaConvertParamsPair { get; init; } = colabFold_MsaConvertParamsPair;
     public string ColabFold_SearchParamsShared { get; init; } = colabFold_SearchParamsShared;
+    public List<int> PersistedA3mDbFolderOrganizationFragmentLengths { get; set; } = new List<int>() { 2, 4 };
 
     const string colabFold_Align1ParamsPair = @"-e 0.001  --max-accept 1000000 -c 0.5 --cov-mode 1";
     const string colabFold_Align2ParamsPair = @"-e inf";

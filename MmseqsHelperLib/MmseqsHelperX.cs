@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
+using System.Linq;
 
 namespace MmseqsHelperLib
 {
@@ -228,26 +229,24 @@ namespace MmseqsHelperLib
 
         }
 
-        public async Task<List<(string id, int index)>> GetHeaderAndIndexForGivenIdsInSequenceDbAsync(string sequenceDbPath, List<string> idsToSearch)
+        public async Task<List<(string header, List<int> indices)>> GetHeaderAndIndicesForGivenHeadersInSequenceDbAsync(string sequenceDbPath, List<string> headersToSearch)
         {
             // will always grab just the first found index when there are duplicates
             var headerFile = $"{sequenceDbPath}{Settings.Mmseqs2Internal_DbHeaderSuffix}";
             var headersInFile = await GetAllHeadersInSequenceDbHeaderDbAsync(headerFile);
-            var headerToStartAndLengthMappings = new Dictionary<string, List<(int startOffset, int length)>>();
+            var headerToStartAndLengthMappings = new Dictionary<string, List<MmseqsIndexEntry>>();
 
             var startOffset = 0;
             foreach (var header in headersInFile)
             {
                 var len = header.Length + Settings.Mmseqs2Internal_DataEntrySeparator.Length;
-                // all must be enumerated to get the correct offsets, but only the selected ones get added to the list
-                // only first copy of each gets added to the list
-                if (idsToSearch.Contains(header))
+                if (headersToSearch.Contains(header))
                 {
                     if (!headerToStartAndLengthMappings.ContainsKey(header))
                     {
-                        headerToStartAndLengthMappings.Add(header, new List<(int startOffset, int length)>());
+                        headerToStartAndLengthMappings.Add(header, new List<MmseqsIndexEntry>());
                     }
-                    headerToStartAndLengthMappings[header].Add((startOffset, len));
+                    headerToStartAndLengthMappings[header].Add(new MmseqsIndexEntry(Int32.MinValue, startOffset, len));
                 }
                 startOffset += len;
             }
@@ -255,34 +254,38 @@ namespace MmseqsHelperLib
             var headerIndexFile = $"{sequenceDbPath}{Settings.Mmseqs2Internal_DbHeaderSuffix}{Settings.Mmseqs2Internal_DbIndexSuffix}";
             var headerIndexFileEntries = await GetAllIndexFileEntriesInDbAsync(headerIndexFile);
 
-            var result = new List<(string id, int index)>();
+            var result = new List<(string header, List<int> indices)>();
 
             foreach (var (header, matchingEntries) in headerToStartAndLengthMappings)
             {
+                if (!matchingEntries.Any()) continue;
+
                 if (matchingEntries.Count > 1)
                 {
-                    _logger.LogInformation($"Found multiple entries for the same header/id ({header}), will use only the first one.");
+                    _logger.LogInformation($"Found multiple entries for the same header/id ({header})");
                 }
-                var (offset, length) = matchingEntries.First();
+                var fakeIndexEntry = matchingEntries.First();
 
-                var matchedEntryIndex = headerIndexFileEntries.FindIndex(x => x.startOffset == offset && x.length == length);
-                var foundMatch = matchedEntryIndex >= 0;
-                if (foundMatch)
+                var matchedEntryIndices = headerIndexFileEntries.Select((entry, index) => (entry, index))
+                    .Where(x=> x.entry.StartOffset == fakeIndexEntry.StartOffset && x.entry.Length == fakeIndexEntry.Length)
+                    .Select(x=>x.index).ToList();
+                
+                if (matchedEntryIndices.Any())
                 {
-                    result.Add((header, headerIndexFileEntries[matchedEntryIndex].index));
+                    result.Add((header, matchedEntryIndices.Select(x=> headerIndexFileEntries[x].Index).ToList()));
                 }
             }
 
             return result;
         }
 
-        private async Task<List<(int index, int startOffset, int length)>> GetAllIndexFileEntriesInDbAsync(string mmseqsDbIndexFile)
+        private async Task<List<MmseqsIndexEntry>> GetAllIndexFileEntriesInDbAsync(string mmseqsDbIndexFile)
         {
             var allLines = await File.ReadAllLinesAsync(mmseqsDbIndexFile);
             return allLines.Select(x =>
             {
                 var entries = x.Split(Settings.Mmseqs2Internal_IndexColumnSeparator);
-                return (int.Parse(entries[0]), int.Parse(entries[1]), int.Parse(entries[2]));
+                return new MmseqsIndexEntry(int.Parse(entries[0]), int.Parse(entries[1]), int.Parse(entries[2]));
             }).ToList();
         }
 

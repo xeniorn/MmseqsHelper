@@ -132,4 +132,19 @@ public static partial class Helper
         return result;
 
     }
+
+    public static async Task<string[]> GetDirectoriesAsync(string location)
+    {
+        return await Task.Run(() => Directory.GetDirectories(location));
+    }
+
+    public static async Task<string[]> GetFilesAsync(string location)
+    {
+        return await Task.Run(() => Directory.GetFiles(location));
+    }
+
+    public static string GetStandardizedDbName(string dbName)
+    {
+        return dbName.ToUpper().Replace(" ", "").Replace("-", "_");
+    }
 }

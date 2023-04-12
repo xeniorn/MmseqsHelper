@@ -60,7 +60,7 @@ internal sealed class MmseqsHelperService
             }
 
             var a = new MmseqsHelperLib.ColabfoldMmseqsHelper(settings, _logger, mmseqsHelper);
-            await a.AutoCreateColabfoldMonoDbsFromFastasAsync(inputFastaPaths, dbPaths, excludedIds, outPath);
+            await a.GenerateColabfoldMonoDbsFromFastasAsync(inputFastaPaths, dbPaths, excludedIds, outPath);
         }
         else if (mode.Process == MmseqsAutoProcess.GenerateA3mFilesForColabfold)
         {
