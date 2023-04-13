@@ -11,5 +11,6 @@ public enum SupportedMmseqsModule
     ConvertResultToMsa,
     ExpandAlignment,
     MergeDatabases,
-    PairAlign
+    PairAlign,
+    PrintVersion
 }

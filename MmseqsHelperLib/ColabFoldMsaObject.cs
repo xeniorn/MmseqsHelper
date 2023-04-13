@@ -23,7 +23,7 @@ public class ColabFoldMsaObject
     
     public async Task WriteToFileSystemAsync(AutoColabfoldMmseqsSettings settings, string targetFolder)
     {
-        Metadata = new ColabfoldMsaMetadataInfo() { PredictionTarget = PredictionTarget, CreateTime = DateTime.Now };
+        Metadata = new ColabfoldMsaMetadataInfo() { PredictionTarget = PredictionTarget, CreateTime = DateTime.Now, MmseqsHelperVersion = settings.ColabfoldMmseqsHelperVersion};
 
         var fullMsaPath = Path.Join(targetFolder, settings.PersistedDbFinalA3mName);
         var fullInfoPath = Path.Join(targetFolder, settings.PersistedDbFinalA3mInfoName);

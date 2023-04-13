@@ -3,6 +3,7 @@
 public class AutoColabfoldMmseqsSettings
 {
     public int PersistedA3mDbShortBatchIdLength { get; init; } = 8; // subset of MD5 hash to use as a3m prediction id
+    public string PersistedMonoDbInfoName { get; set; } = @"database_info.json";
     public string PersistedDbFinalA3mInfoName { get; init; } = @"msa_info.json";
     public string PersistedDbFinalA3mName { get; init; } = @"msa.a3m";
     public string PersistedDbQdbName { get; init; } = @"qdb";
@@ -14,14 +15,13 @@ public class AutoColabfoldMmseqsSettings
     public string FastaSuffix { get; init; } = @".fasta";
     public Dictionary<string, string> Custom { get; init; } = new();
 
-    public int MaxDesiredBatchSize { get; init; } = 1600;
+    public int MaxDesiredMonoBatchSize { get; init; } = 500;
     
     public int MaxDesiredPredictionTargetBatchSize { get; set; } = 200;
     // (data, index, dbtype) for (mono, pair_align, qdb, qdb_h) = 12, plus qdb.lookup (not needed)
     public int PersistedDbMinimalNumberOfFilesInMonoDbResult { get; init; } = 12;
     
     // for organization of final a3m files into subfolders
-    public int PairResultDatabaseSubfolderLength { get; init; } = 2;
     public string ColabfoldComplexFastaMonomerSeparator { get; init; } = ":";
 
     public string ColabFold_Align1ParamsPair { get; init; } = colabFold_Align1ParamsPair;
@@ -48,5 +48,5 @@ public class AutoColabfoldMmseqsSettings
     const string colabFold_SearchParamsShared = @"--num-iterations 3 -a -s 8 -e 0.1 --max-seqs 10000";
 
     public CalculationStrategy Strategy { get; } = new() {SuspiciousData = SuspiciousDataStrategy.PlaySafe};
-
+    public string ColabfoldMmseqsHelperVersion { get; set; }
 }

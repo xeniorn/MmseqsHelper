@@ -10,7 +10,7 @@
     },
     "testMono": {
       "commandName": "Project",
-      "commandLineArgs": "auto-mono\r\n--InputFastaPaths=C:\\temp\\mmseqs_test\\alle2s.fasta\r\n--MmseqsBinaryPath=\\$(which echo)\r\n--UniprotDbPath=uniprotdb\r\n--EnvDbPath=envdb\r\n--OutputPath=output\r\n--existingdatabasepaths=\"C:\\temp\\mmseqs_test\\mono_result_db\"\r\n--TempPath=C:\\temp\\mmseqs_test\\temp\\mono\r\n"
+      "commandLineArgs": "auto-mono\r\n--InputFastaPaths=C:\\temp\\mmseqs_test\\alle2s.fasta\r\n--MmseqsBinaryPath=\"C:\\Program Files\\Notepad++\\notepad++.exe\"\r\n--UniprotDbPath=uniprotdb\r\n--EnvDbPath=envdb\r\n--OutputPath=\"C:\\temp\\mmseqs_test\\mono_ressult_db\"\r\n--existingdatabasepaths=\"C:\\temp\\mmseqs_test\\mono_ressult_db\"\r\n--TempPath=C:\\temp\\mmseqs_test\\temp\\mono\r\n"
     }
   }
 }

@@ -2,7 +2,7 @@
 
 public static class Constants
 {
-    public static readonly Dictionary<SupportedMmseqsModule,string> ModuleStrings = new Dictionary<SupportedMmseqsModule,string>()
+    public static readonly Dictionary<SupportedMmseqsModule,string> ModuleStrings = new ()
     {
         {SupportedMmseqsModule.Search, "search" },
         {SupportedMmseqsModule.ExpandAlignment, "expandaln" },
@@ -12,7 +12,8 @@ public static class Constants
         {SupportedMmseqsModule.LinkDatabase, "lndb" },
         {SupportedMmseqsModule.MoveDatabase, "mvdb" },
         {SupportedMmseqsModule.MergeDatabases, "mergedbs" },
-        { SupportedMmseqsModule.PairAlign, "pairaln"}
+        { SupportedMmseqsModule.PairAlign, "pairaln"},
+        {SupportedMmseqsModule.PrintVersion, "version"}
     };
 
 }
