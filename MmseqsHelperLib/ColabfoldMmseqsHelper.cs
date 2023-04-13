@@ -482,7 +482,7 @@ public class ColabfoldMmseqsHelper
         if (ReferenceSourceDatabaseTarget.UseForUnpaired)
         {
             refProcessingTasks.Add((ColabfoldMsaDataType.Unpaired,
-                Task.Run(() => GenerateSpecialMonoA3mDbForReferenceDbAsync(workingDir, qdbPath, refSearchDb, refProfileDb, ReferenceSourceDatabaseTarget))));
+                Task.Run(() => GenerateSpecialMonoA3mDbForReferenceDbAsync(workingDir, qdbPath, refProfileDb, refSearchDb, ReferenceSourceDatabaseTarget))));
         }
         if (ReferenceSourceDatabaseTarget.UseForPaired)
         {
