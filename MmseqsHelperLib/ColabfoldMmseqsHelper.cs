@@ -305,7 +305,7 @@ public class ColabfoldMmseqsHelper
 
     private async Task<string> GenerateSpecialMonoA3mDbForReferenceDbAsync(string workingDir, string qdbPath, string profileResultDb, string searchResultDb, MmseqsSourceDatabaseTarget refDbTarget)
     {
-        var localProcessingPath = Path.Join(workingDir, refDbTarget.Database.Name, "ref_mono");
+        var localProcessingPath = Path.Join(workingDir, refDbTarget.Database.Name, "mono");
         await Helper.CreateDirectoryAsync(localProcessingPath);
         var targetDbPathBase = refDbTarget.Database.Path;
 
@@ -1096,7 +1096,7 @@ public class ColabfoldMmseqsHelper
     private async Task<(string searchDb, string profileDb)> GenerateReferenceSearchAndCreateProfileDbAsync(MmseqsSourceDatabaseTarget dbTarget, string workingDir, string qdbPath)
     {
         //*******************************************search*******************************************************
-        var processingFolderRoot = Path.Join(workingDir, "ref", dbTarget.Database.Name);
+        var processingFolderRoot = Path.Join(workingDir, dbTarget.Database.Name, "search");
         await Helper.CreateDirectoryAsync(processingFolderRoot);
         var searchSubfolder = Path.Join(processingFolderRoot, "tmp");
         await Helper.CreateDirectoryAsync(searchSubfolder);
