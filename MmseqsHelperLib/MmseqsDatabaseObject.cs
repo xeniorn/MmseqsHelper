@@ -37,6 +37,11 @@ public class MmseqsDatabaseObject
         var separator = Encoding.ASCII.GetBytes(settings.Mmseqs2Internal_DataEntrySeparator);
         var newline = Encoding.ASCII.GetBytes("\n");
 
+        if (DatabaseType == MmseqsDatabaseType.Header_GENERIC_DB)
+        {
+            dbPath = $"{dbPath}{settings.Mmseqs2Internal_DbHeaderSuffix}";
+        }
+
         var dataDbPath = $"{dbPath}{settings.Mmseqs2Internal_DbDataSuffix}";
         var indexDbPath = $"{dbPath}{settings.Mmseqs2Internal_DbIndexSuffix}";
         var dbTypePath = $"{dbPath}{settings.Mmseqs2Internal_DbTypeSuffix}";

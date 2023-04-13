@@ -43,7 +43,7 @@ public class ColabfoldMmseqsHelper
     public MmseqsSourceDatabaseTarget RootSourceDatabaseTarget { get; }
     public AutoColabfoldMmseqsSettings Settings { get; set; }
 
-    public static AutoColabfoldMmseqsSettings GetDefaultSettings() => new AutoColabfoldMmseqsSettings();
+    public static AutoColabfoldMmseqsSettings GetDefaultSettings() => new ();
 
     public async Task GenerateA3msFromFastasGivenExistingMonoDbsAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> persistedMonoDbPaths, IEnumerable<string> excludedPredictionHashes, string outputPath, IEnumerable<string> persistedA3mPaths)
     {
@@ -352,56 +352,55 @@ public class ColabfoldMmseqsHelper
         // should already be rectified on input, so should be ok to use distinct by reference
         var targetMonos = predictionBatch.SelectMany(x => x.UniqueProteins).Distinct().ToList();
 
-        var (mmseqsDatabase,locator) = GenerateQdbAndLocatorForPredictionBatch(predictionBatch, workingDir);
-        
-        var writeTasks = new List<Task>
-        {
-            mmseqsDatabase.WriteToFileSystemAsync(Mmseqs.Settings)
-        };
         //******************************************* generate new qdb *******************************************************
+        var (mmseqsDatabase,locator) = GenerateQdbAndLocatorForPredictionBatch(predictionBatch);
 
-
+        var pairedQdb = Path.Join(workingDir, "qdb");
+        var writeTasks = new List<Task> {
+            mmseqsDatabase.WriteToFileSystemAsync(Mmseqs.Settings, pairedQdb)
+        };
 
         //*******************************************figure out which mono dbs contain relevant entries at which indices*******************************************************
-        //******************************************* and read in relevant fragments of align files*******************************************************
-
         //******************************************* check which persisted dbs used each target mono and have the desired features *******************************************************
-
-        const int hardcodedSearchBatchSize = 20;
-        var existingDbParallelSearchBatchSize = hardcodedSearchBatchSize;
 
         var requiredFeatures = GetRequiredMonoDbFeaturesForPredictions(predictionBatch);
 
+        const int hardcodedSearchBatchSize = 20;
+        var existingDbParallelSearchBatchSize = hardcodedSearchBatchSize;
         var searchBatches = GetBatches<string>(persistedMonoDatabasesPaths, existingDbParallelSearchBatchSize);
         foreach (var searchBatch in searchBatches)
         {
-            var featuresToBeFound = requiredFeatures.Where(x => !string.IsNullOrWhiteSpace(x.Path)).ToList();
-            var monosThatStillNeedToBeFound = featuresToBeFound.Select(x=>x.Mono).Distinct().ToList();
+            var featuresToBeFound = requiredFeatures.Where(x => !string.IsNullOrWhiteSpace(x.FeatureSubFolderPath)).ToList();
+            var monosThatStillNeedToBeFound = featuresToBeFound.Select(x => x.Mono).Distinct().ToList();
+            
+            var monoToLocationsMapping =
+                await GetMonoToDbAndIndexMappingsForSearchBatch(searchBatch, monosThatStillNeedToBeFound);
 
-            // for each db, which monos it contains
-            var dbToMonoMapping = new Dictionary<string, List<Protein>>();
-            var monoToLocationsMapping = await GetMonoToDbAndIndexMappingsForSearchBatch(searchBatch, monosThatStillNeedToBeFound);
-
-            var foundMonos = monoToLocationsMapping.Select(x=>x.Key).ToList();
-
-            foreach (var feature in featuresToBeFound.Where(x=> foundMonos.Contains(x.Mono)))
+            var foundMonos = monoToLocationsMapping.Select(x => x.Key).ToList();
+            foreach (var feature in featuresToBeFound.Where(x => foundMonos.Contains(x.Mono)))
             {
-                var locationsContainingMono = monoToLocationsMapping[feature.Mono].Select(x=>x.dbLocation);
+                var locationsContainingMono = monoToLocationsMapping[feature.Mono].Select(x => x.dbLocation);
                 foreach (var location in locationsContainingMono)
                 {
-                    var containedFolders = await Helper.GetDirectoriesAsync(location); 
-                    var expectedSubfolder = feature.DatabaseName;
-                    var matchedFolders = containedFolders.Where(x=>Helper.GetStandardizedDbName(x) == Helper.GetStandardizedDbName(expectedSubfolder)).ToList();
-                    
-                    if (matchedFolders.Any())
+                    var subFoldersInLocation = await Helper.GetDirectoriesAsync(location);
+                    var expectedSubFolder = feature.DatabaseName;
+                    var matchingSubFolders = subFoldersInLocation.Where(x =>
+                        Helper.GetStandardizedDbName(Path.GetFileName(x)) == Helper.GetStandardizedDbName(expectedSubFolder)).ToList();
+
+                    if (matchingSubFolders.Any())
                     {
-                        if (matchedFolders.Count > 1)
+                        if (matchingSubFolders.Count > 1)
                         {
-                            _logger.LogWarning($"Something is weird with folder naming in ({location}), will not use it.");
-                            continue;
+                            _logger.LogWarning($"Something is weird with folder naming in ({location})");
+                            if (Settings.Strategy.SuspiciousData == SuspiciousDataStrategy.PlaySafe)
+                            {
+                                _logger.LogWarning($"Will not use it.");
+                                continue;
+                            }
                         }
 
-                        var subPath = Path.Combine(location, matchedFolders.Single());
+                        var subFolderForTargetDatabase = matchingSubFolders.First();
+                        var subPath = Path.Combine(location, subFolderForTargetDatabase);
                         string requiredDbName;
                         switch (feature.SourceType)
                         {
@@ -420,168 +419,81 @@ public class ColabfoldMmseqsHelper
                         var files = await Helper.GetFilesAsync(subPath);
                         if (files.Any(x => Path.GetFileName(x) == requiredDbFileName))
                         {
-                            feature.Path = matchedFolders.Single();
+                            feature.DbPath = location;
+                            feature.FeatureSubFolderPath = subFolderForTargetDatabase;
+                            feature.Indices = monoToLocationsMapping[feature.Mono].Single(x => x.dbLocation == location)
+                                .qdbIndices;
                             break;
                         }
                     }
                 }
-                
             }
+        }
 
-            // preconstruct all objects
+        var missingFeatures = requiredFeatures.Where(x=>string.IsNullOrWhiteSpace(x.FeatureSubFolderPath)).ToList();
+        
+        var unfeasibleMonos = missingFeatures.Select(x => x.Mono).ToList();
+        var unfeasiblePredictions = missingFeatures.Any() ? predictionBatch
+            .Where(x => x.UniqueProteins.Any(prot => unfeasibleMonos.Contains(prot))).ToList() : new List<PredictionTarget>();
+
+        if (missingFeatures.Any())
+        {
+            if (missingFeatures.Count < predictionBatch.Count)
             {
-                
-               
-                foreach (var (protein, dbIndexLocations) in monoToDbAndIndexMappingMulti)
-                {
-                    var (db, index) = dbIndexLocations.First();
-                    if (dbIndexLocations.Count > 1)
-                    {
-                        _logger.LogInformation(
-                            $"target {protein.Id} found in multiple mono databases ({dbIndexLocations.Count}), will use only the first one ({db})");
-                    }
+                _logger.LogWarning($"Some predictions in batch ({unfeasiblePredictions.Count}/{predictionBatch.Count}) require predicted mono features that are missing. They will be skipped.");
+            }
+            else
+            {
+                _logger.LogWarning($"All require predicted mono features that are missing. Aborting.");
+                return locator;
+            }
+        }
 
-                    monoToDbAndIndexMapping.Add(protein, (db, index));
+        var predictionsToExtractDataFor = predictionBatch.Except(unfeasiblePredictions).ToList();
+        var usableFeatures = requiredFeatures.Except(missingFeatures).ToList();
+        
+        //******************************************* and read in relevant fragments of align files*******************************************************
+
+        foreach (var searchBatch in searchBatches)
+        {
+            //******************************************* reconstruct align data dbs *******************************************************
+            //******************************************* reconstruct mono data dbs ********************************************************
+
+            foreach (var dbTarget in MmseqsSourceDatabaseTargets)
+            {
+                if (dbTarget.UseForPaired)
+                {
+                    // actual data of each aligndb for each mono
+                    var monoToAlignFragmentMappings = new Dictionary<Protein, byte[]>();
+
+                    var pairedAlignDb = Path.Join(workingDir, $"{dbTarget.Database.Name}_align1");
+                    var alignDbDataDbPath = $"{pairedAlignDb}{Mmseqs.Settings.Mmseqs2Internal_DbDataSuffix}";
+                    var alignDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.Alignment_ALIGNMENT_RES);
+
+                    await ReadInAlignDbFragmentsForSearchBatch(searchBatch, dbToMonoMapping, monoToDbAndIndexMapping,
+                        monoToAlignFragmentMappings);
+                    
+                    writeTasks.Add(alignDbObject.WriteToFileSystemAsync(Mmseqs.Settings, alignDbDataDbPath));
                 }
 
-                await ReadInAlignDbFragmentsForSearchBatch(searchBatch, dbToMonoMapping, monoToDbAndIndexMapping,
-                    monoToAlignFragmentMappings);
-                await ReadInUnpairedA3mDbFragmentsForSearchBatch(searchBatch, dbToMonoMapping,
-                    monoToDbAndIndexMapping,
-                    monoToUnpairedA3mMappings);
+            if (dbTarget.UseForMono)
+                {
+                    // actual unpaired data
+                    var monoToUnpairedA3mMappings = new Dictionary<Protein, byte[]>();
+
+                    var unpairedA3mDb = Path.Join(workingDir, $"{dbTarget.Database.Name}_unpaired_a3m_mmseqsdb");
+                    var unpairedA3mDbDataDbPath = $"{unpairedA3mDb}{Mmseqs.Settings.Mmseqs2Internal_DbDataSuffix}";
+                    var unpairedA3mDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.A3m_MSA_DB);
+                    
+                    await ReadInUnpairedA3mDbFragmentsForSearchBatch(searchBatch, dbToMonoMapping,
+                        monoToDbAndIndexMapping,
+                        monoToUnpairedA3mMappings);
+
+                    writeTasks.Add(unpairedA3mDbObject.WriteToFileSystemAsync(Mmseqs.Settings, unpairedA3mDbDataDbPath));
+                }
             }
-
         }
-
-
-        //******************************************* reconstruct align data dbs *******************************************************
-        //******************************************* reconstruct mono data dbs ********************************************************
-
-        foreach (var dbTarget in MmseqsSourceDatabaseTargets)
-        {
-            var pairedAlignDb = Path.Join(workingDir, $"{dbTarget.Database.Name}_align1");
-            var unpairedA3mDb = Path.Join(workingDir, $"{dbTarget.Database.Name}_unpaired_a3m_mmseqsdb");
-
-            var alignDbDataDbPath = $"{pairedAlignDb}{Mmseqs.Settings.Mmseqs2Internal_DbDataSuffix}";
-            var unpairedA3mDbDataDbPath = $"{unpairedA3mDb}{Mmseqs.Settings.Mmseqs2Internal_DbDataSuffix}";
-
-            var alignDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.Alignment_ALIGNMENT_RES);
-            var unpairedA3mDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.A3m_MSA_DB);
-
-            writeTasks.Add(alignDbObject.WriteToFileSystemAsync(Mmseqs.Settings, alignDbDataDbPath));
-            writeTasks.Add(unpairedA3mDbObject.WriteToFileSystemAsync(Mmseqs.Settings, unpairedA3mDbDataDbPath));
-
-            
-
-            // actual data of each aligndb for each mono
-            var monoToAlignFragmentMappings = new Dictionary<Protein, byte[]>();
-
-            // actual unpaired data
-            var monoToUnpairedA3mMappings = new Dictionary<Protein, byte[]>();
-
-
-
-
-
-            //    var searchBatches = GetBatches<string>(realPersistedMonoDatabasesPaths, existingDbParallelSearchBatchSize);
-            //    foreach (var searchBatch in searchBatches)
-            //    {
-            //        var alreadyFound = monoToDbAndIndexMapping.Keys;
-            //        monosThatStillNeedToBeFound = monosThatStillNeedToBeFound.Except(alreadyFound).ToList();
-
-            //        // preconstruct all objects
-            //        {
-            //            await GetDbToMonoMappingsForSearchBatch(searchBatch, monosThatStillNeedToBeFound, dbToMonoMapping);
-
-            //            await GetMonoToDbAndIndexMappingsForSearchBatch(searchBatch, dbToMonoMapping,
-            //                monoToDbAndIndexMappingMulti);
-            //            foreach (var (protein, dbIndexLocations) in monoToDbAndIndexMappingMulti)
-            //            {
-            //                var (db, index) = dbIndexLocations.First();
-            //                if (dbIndexLocations.Count > 1)
-            //                {
-            //                    _logger.LogInformation(
-            //                        $"target {protein.Id} found in multiple mono databases ({dbIndexLocations.Count}), will use only the first one ({db})");
-            //                }
-
-            //                monoToDbAndIndexMapping.Add(protein, (db, index));
-            //            }
-
-            //            await ReadInAlignDbFragmentsForSearchBatch(searchBatch, dbToMonoMapping, monoToDbAndIndexMapping,
-            //                monoToAlignFragmentMappings);
-            //            await ReadInUnpairedA3mDbFragmentsForSearchBatch(searchBatch, dbToMonoMapping,
-            //                monoToDbAndIndexMapping,
-            //                monoToUnpairedA3mMappings);
-            //        }
-
-            //    }
-
-
-
-
-
-        }
-
-
-        //async Task GetDbToMonoMappingsForSearchBatch(List<string> dbLocationsToSearch, List<Protein> proteins,
-        //        Dictionary<string, List<Protein>> mutableDbToMonoMapping)
-        //{
-        //    var resultTasksMapping = new List<(string db, Task<List<string>> resultTask)>();
-        //    foreach (var dbLocation in dbLocationsToSearch)
-        //    {
-        //        // queue up tasks for now don't await one by one
-        //        var qdbPath = Path.Join(dbLocation, Settings.PersistedDbQdbName);
-        //        resultTasksMapping.Add((dbLocation,
-        //            Mmseqs.GetIdsFoundInSequenceDbAsync(qdbPath, proteins.Select(x => x.Id))));
-        //    }
-
-        //    // wait all in batch in parallel
-        //    await Task.WhenAll(resultTasksMapping.Select(x => x.resultTask));
-
-        //    var monoToDbMapping = new Dictionary<Protein, string>();
-
-        //    foreach (var (db, resultTask) in resultTasksMapping)
-        //    {
-        //        var ids = resultTask.Result;
-        //        var containedProteins = proteins.Where(x => ids.Contains(x.Id));
-        //        mutableDbToMonoMapping.Add(db, containedProteins.ToList());
-        //    }
-        //}
-
-        //async Task GetMonoToDbAndIndexMappingsForSearchBatch(List<string> dbLocationsToSearch,
-        //    Dictionary<string, List<Protein>> dbToMonoMapping,
-        //    Dictionary<Protein, List<(string db, int index)>> mutableMonoToDbAndIndexMapping)
-        //{
-        //    var resultTasksMapping = new List<(string db, Task<List<(string id, int index)>> resultTask)>();
-        //    foreach (var dbLocation in dbLocationsToSearch)
-        //    {
-        //        var proteinsInThisDb = dbToMonoMapping[dbLocation];
-
-        //        // queue up tasks for now don't await one by one
-        //        var qdbPath = Path.Join(dbLocation, Settings.PersistedDbQdbName);
-        //        resultTasksMapping.Add((dbLocation,
-        //            Mmseqs.GetHeaderAndIndicesForGivenHeadersInSequenceDbAsync(qdbPath,
-        //                proteinsInThisDb.Select(x => x.Id).ToList())));
-        //    }
-
-        //    await Task.WhenAll(resultTasksMapping.Select(x => x.resultTask));
-
-        //    foreach (var (dbPath, resultTask) in resultTasksMapping)
-        //    {
-        //        var proteinsInThisDb = dbToMonoMapping[dbPath];
-        //        var entriesInDb = resultTask.Result;
-        //        foreach (var (id, index) in entriesInDb)
-        //        {
-        //            var protein = proteinsInThisDb.Single(x => x.Id == id);
-        //            if (!mutableMonoToDbAndIndexMapping.ContainsKey(protein))
-        //            {
-        //                mutableMonoToDbAndIndexMapping.Add(protein, new List<(string db, int index)>());
-        //            }
-
-        //            mutableMonoToDbAndIndexMapping[protein].Add((dbPath, index));
-        //        }
-        //    }
-        //}
+        
 
         async Task ReadInAlignDbFragmentsForSearchBatch(List<string> dbLocationsToProcess,
             Dictionary<string, List<Protein>> dbToMonoMapping,
@@ -655,7 +567,9 @@ public class ColabfoldMmseqsHelper
         return locator;
     }
 
-    private (MmseqsQueryDatabaseContainer, MmseqsDbLocator) GenerateQdbAndLocatorForPredictionBatch(List<PredictionTarget> predictionBatch, string workingDir)
+    
+
+    private (MmseqsQueryDatabaseContainer, MmseqsDbLocator) GenerateQdbAndLocatorForPredictionBatch(List<PredictionTarget> predictionBatch)
     {
         var mmseqsQueryDatabase = new MmseqsQueryDatabaseContainer();
         var locator = new MmseqsDbLocator();
@@ -688,17 +602,7 @@ public class ColabfoldMmseqsHelper
         mmseqsQueryDatabase.DataDbObject = qdbDataDbObject;
         mmseqsQueryDatabase.HeaderDbObject = qdbHeaderDbObject;
         mmseqsQueryDatabase.LookupObject = qdbLookupObject;
-
-        var pairedQdb = Path.Join(workingDir, "qdb");
-        var pairQdbDataDbPath = $"{pairedQdb}{Mmseqs.Settings.Mmseqs2Internal_DbDataSuffix}";
-        var pairQdbHeaderDbPath = $"{pairedQdb}{Mmseqs.Settings.Mmseqs2Internal_DbHeaderSuffix}";
-        var pairQdbLookupPath = $"{pairedQdb}";
-
-        mmseqsQueryDatabase.Path = pairedQdb;
-        mmseqsQueryDatabase.DataDbPath = pairQdbDataDbPath;
-        mmseqsQueryDatabase.HeaderDbPath = pairQdbHeaderDbPath;
-        mmseqsQueryDatabase.LookupPath = pairQdbLookupPath;
-
+        
         return (mmseqsQueryDatabase, locator);
     }
 
@@ -737,9 +641,9 @@ public class ColabfoldMmseqsHelper
 
     }
 
-    private List<MmseqsPersistedMonoDbEntry> GetRequiredMonoDbFeaturesForPredictions(List<PredictionTarget> predictionBatch)
+    private List<MmseqsPersistedMonoDbEntryFeature> GetRequiredMonoDbFeaturesForPredictions(List<PredictionTarget> predictionBatch)
     {
-        var res = new List<MmseqsPersistedMonoDbEntry>();
+        var res = new List<MmseqsPersistedMonoDbEntryFeature>();
 
         var allProteins = predictionBatch.SelectMany(x=>x.UniqueProteins).Distinct().ToList();
 
@@ -747,8 +651,8 @@ public class ColabfoldMmseqsHelper
         {
             foreach (var dbTarget in MmseqsSourceDatabaseTargets)
             {
-                if (dbTarget.UseForMono) res.Add(new MmseqsPersistedMonoDbEntry(protein,dbTarget.Database.Name,ColabfoldMsaDataType.Unpaired));
-                if (dbTarget.UseForPaired) res.Add(new MmseqsPersistedMonoDbEntry(protein, dbTarget.Database.Name, ColabfoldMsaDataType.Paired));
+                if (dbTarget.UseForMono) res.Add(new MmseqsPersistedMonoDbEntryFeature(protein,dbTarget.Database.Name,ColabfoldMsaDataType.Unpaired));
+                if (dbTarget.UseForPaired) res.Add(new MmseqsPersistedMonoDbEntryFeature(protein, dbTarget.Database.Name, ColabfoldMsaDataType.Paired));
             }
         }
 
@@ -1286,79 +1190,13 @@ public class ColabfoldMmseqsHelper
 
 }
 
-internal class MmseqsQueryDatabaseContainer
+public class CalculationStrategy
 {
-    public MmseqsDatabaseObject DataDbObject { get; set; }
-    public MmseqsDatabaseObject HeaderDbObject { get; set; }
-    public MmseqsLookupObject LookupObject { get; set; }
-    public string Path { get; set; }
-    public string DataDbPath { get; set; }
-    public string HeaderDbPath { get; set; }
-    public string LookupPath { get; set; }
-
-    public async Task WriteToFileSystemAsync(MmseqsSettings settings, string basePath)
-    {
-
-
-        var writeTasks = new List<Task>()
-        {
-            DataDbObject.WriteToFileSystemAsync(settings, pairQdbDataDbPath),
-            HeaderDbObject.WriteToFileSystemAsync(settings, pairQdbHeaderDbPath),
-            LookupObject.WriteToFileSystemAsync(settings, pairQdbLookupPath)
-        };
-
-        await Task.WhenAll(writeTasks);
-
-    }
+    public SuspiciousDataStrategy SuspiciousData { get; set; }
 }
 
-internal record MmseqsPersistedMonoDbEntry(Protein Mono, string DatabaseName, ColabfoldMsaDataType SourceType)
+public enum SuspiciousDataStrategy
 {
-    public string Path { get; set; } = String.Empty;
+    PlaySafe,
+    RecklessDaredevil
 }
-
-internal class MmseqsDbLocator
-{
-    public string QdbPath { get; } = string.Empty;
-    public Dictionary<MmseqsSourceDatabaseTarget, (string unpairedDbPath, string pairedDbPath)> DatabasePathMapping { get; } = new();
-    public Dictionary<PredictionTarget, List<int>> QdbIndicesMapping { get; } = new ();
-}
-
-//internal record MmseqsDbLocatorEntry(string PairedA3mDbPath, string UnpairedA3mDbPath, List<int> QdbIndices)
-//{
-//    public string PairedA3mDbPath { get; set; } = PairedA3mDbPath;
-//    public string UnpairedA3mDbPath { get; set; } = UnpairedA3mDbPath;
-//    public List<int> QdbIndices { get; init; } = QdbIndices;
-//}
-
-public class MmseqsSourceDatabase
-{
-    public MmseqsSourceDatabase(string dbName, string dbPath, MmseqsSourceDatabaseFeatures features)
-    {
-        this.Name = dbName;
-        this.Path = dbPath;
-        this.Features = features;
-    }
-
-    public MmseqsSourceDatabaseFeatures Features { get; }
-
-    public string Name { get; }
-    public string Path { get; }
-}
-
-public class MmseqsSourceDatabaseTarget
-{
-    public MmseqsSourceDatabaseTarget(MmseqsSourceDatabase db, bool useForMono, bool useForPaired)
-    {
-        Database = db;
-        UseForMono = useForMono;
-        UseForPaired = useForPaired;
-    }
-
-    public MmseqsSourceDatabase Database { get; }
-
-    public bool UseForMono { get; }
-
-    public bool UseForPaired { get; }
-}
-public record MmseqsSourceDatabaseFeatures(bool HasTaxonomyData);

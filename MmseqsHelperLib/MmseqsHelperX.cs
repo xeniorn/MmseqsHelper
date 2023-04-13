@@ -210,19 +210,17 @@ namespace MmseqsHelperLib
 
             var dbIndexFile = $"{dataDbPath}{Settings.Mmseqs2Internal_DbIndexSuffix}";
             var entries = await GetAllIndexFileEntriesInDbAsync(dbIndexFile);
-            var orderedEntriesToRead = entries.Where(x => indices.Contains(x.index)).OrderBy(x => x.startOffset).ToList();
+            var orderedEntriesToRead = entries.Where(x => indices.Contains(x.Index)).OrderBy(x => x.StartOffset).ToList();
 
             var dbDataFile = $"{dataDbPath}{Settings.Mmseqs2Internal_DbDataSuffix}";
 
-            using (BinaryReader reader = new BinaryReader(new FileStream(dbDataFile, FileMode.Open)))
+            using BinaryReader reader = new BinaryReader(new FileStream(dbDataFile, FileMode.Open));
+            foreach (var (index, startOffset, length) in orderedEntriesToRead)
             {
-                foreach (var (index, startOffset, length) in orderedEntriesToRead)
-                {
-                    reader.BaseStream.Position = startOffset;
-                    var lengthToRead = length - Settings.Mmseqs2Internal_DataEntrySeparator.Length;
-                    var data = reader.ReadBytes(lengthToRead);
-                    result.Add((data, index));
-                }
+                reader.BaseStream.Position = startOffset;
+                var lengthToRead = length - Settings.Mmseqs2Internal_DataEntrySeparator.Length;
+                var data = reader.ReadBytes(lengthToRead);
+                result.Add((data, index));
             }
 
             return result;
