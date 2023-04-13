@@ -18,8 +18,8 @@ public class AutoColabfoldMmseqsSettings
     public int MaxDesiredMonoBatchSize { get; init; } = 500;
     
     public int MaxDesiredPredictionTargetBatchSize { get; set; } = 200;
-    // (data, index, dbtype) for (mono, pair_align, qdb, qdb_h) = 12, plus qdb.lookup (not needed)
-    public int PersistedDbMinimalNumberOfFilesInMonoDbResult { get; init; } = 12;
+    // database info file 1, qdb(seq, h)*(data, index, dbtype) 6
+    public int PersistedDbMinimalNumberOfFilesInMonoDbResult { get; init; } = 7;
     
     // for organization of final a3m files into subfolders
     public string ColabfoldComplexFastaMonomerSeparator { get; init; } = ":";

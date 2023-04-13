@@ -9,6 +9,7 @@ namespace MmseqsHelperLib;
 
 public class ColabfoldMmseqsHelper
 {
+    const int hardcodedSearchBatchSize = 20;
 
     private readonly ILogger<ColabfoldMmseqsHelper> _logger;
 
@@ -123,10 +124,21 @@ public class ColabfoldMmseqsHelper
 
     }
 
-    public async Task GenerateColabfoldMonoDbsFromFastasAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> existingDatabasePaths, IEnumerable<string> excludedIds, string outputPath)
+    public async Task GenerateColabfoldMonoDbsFromFastasAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> persistedMonoDatabaseParentFolderLocations, IEnumerable<string> excludedIds, string outputPath)
     {
         var excludedIdList = excludedIds.ToList();
-        var (existingTargets, missingTargets) = await GetExistingAndMissingSetsAsync(inputFastaPaths, existingDatabasePaths, excludedIdList);
+        var persistedMonoDbPaths = await GetDbEntryFoldersAsync(persistedMonoDatabaseParentFolderLocations.ToList());
+
+        var uniqueTargets = await GetProteinTargetsForMonoDbSearchAsync(inputFastaPaths, excludedIdList);
+        var requiredFeatures = GetRequiredMonoDbFeaturesForTargets(uniqueTargets);
+
+        int existingDbParallelSearchBatchSize = hardcodedSearchBatchSize;
+        var (missingFeatures, _) =
+            await GetUsableAndMissingFeaturesAsync(persistedMonoDbPaths, requiredFeatures, existingDbParallelSearchBatchSize);
+
+        //TODO: this is a stupid way to do it, recalculating the whole target mono is a single feature is missing. Fix later to redo only the actually missing features.
+        var missingTargets = missingFeatures.Select(x => x.Mono).Distinct().ToList();
+        var existingTargets = uniqueTargets.Except(missingTargets).ToList();
 
         var total = existingTargets.Count + missingTargets.Count;
 
@@ -150,6 +162,97 @@ public class ColabfoldMmseqsHelper
             await GenerateColabfoldMonoDbsForProteinBatchAsync(outputPath, proteinBatch);
         }
     }
+
+    private async Task<(List<MmseqsPersistedMonoDbEntryFeature> missingFeatures, List<MmseqsPersistedMonoDbEntryFeature> usableFeatures)> 
+        GetUsableAndMissingFeaturesAsync(List<string> persistedMonoDatabasesPaths, List<Protein> predictionBatch, int existingDbParallelSearchBatchSize)
+    {
+        var requiredFeatures = GetRequiredMonoDbFeaturesForTargets(predictionBatch);
+
+        var searchBatches = GetBatches<string>(persistedMonoDatabasesPaths, existingDbParallelSearchBatchSize);
+        foreach (var searchBatch in searchBatches)
+        {
+            var featuresToBeFound =
+                requiredFeatures.Where(x => !string.IsNullOrWhiteSpace(x.FeatureSubFolderPath)).ToList();
+            var monosThatStillNeedToBeFound = featuresToBeFound.Select(x => x.Mono).Distinct().ToList();
+
+            var monoToLocationsMapping =
+                await GetMonoToDbAndIndexMappingsForSearchBatch(searchBatch, monosThatStillNeedToBeFound);
+
+            var foundMonos = monoToLocationsMapping.Select(x => x.Key).ToList();
+            foreach (var feature in featuresToBeFound.Where(x => foundMonos.Contains(x.Mono)))
+            {
+                var locationsContainingMono = monoToLocationsMapping[feature.Mono].Select(x => x.dbLocation);
+                foreach (var location in locationsContainingMono)
+                {
+                    var subFoldersInLocation = await Helper.GetDirectoriesAsync(location);
+                    var expectedSubFolder = feature.DatabaseName;
+                    var matchingSubFolders = subFoldersInLocation.Where(x =>
+                        Helper.GetStandardizedDbName(Path.GetFileName(x)) ==
+                        Helper.GetStandardizedDbName(expectedSubFolder)).ToList();
+
+                    if (matchingSubFolders.Any())
+                    {
+                        if (matchingSubFolders.Count > 1)
+                        {
+                            _logger.LogWarning($"Something is weird with folder naming in ({location})");
+                            if (Settings.Strategy.SuspiciousData == SuspiciousDataStrategy.PlaySafe)
+                            {
+                                _logger.LogWarning($"Will not use it.");
+                                continue;
+                            }
+                        }
+
+                        var subFolderForTargetDatabase = matchingSubFolders.First();
+                        var subPath = Path.Join(location, subFolderForTargetDatabase);
+                        string requiredDbName;
+                        switch (feature.SourceType)
+                        {
+                            case ColabfoldMsaDataType.Unpaired:
+                                requiredDbName = Settings.PersistedDbMonoModeResultDbName;
+                                break;
+                            case ColabfoldMsaDataType.Paired:
+                                requiredDbName = Settings.PersistedDbPairModeFirstAlignDbName;
+                                break;
+                            default:
+                                throw new Exception("This should never happen.");
+                        }
+
+                        var requiredDbFileName = $"{requiredDbName}{Mmseqs.Settings.Mmseqs2Internal_DbTypeSuffix}";
+
+                        var files = await Helper.GetFilesAsync(subPath);
+                        if (files.Any(x => Path.GetFileName(x) == requiredDbFileName))
+                        {
+                            feature.DbPath = location;
+                            feature.FeatureSubFolderPath = subFolderForTargetDatabase;
+                            feature.Indices = monoToLocationsMapping[feature.Mono].Single(x => x.dbLocation == location)
+                                .qdbIndices;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        var missingFeatures = requiredFeatures.Where(x => string.IsNullOrWhiteSpace(x.FeatureSubFolderPath)).ToList();
+        var usableFeatures = requiredFeatures.Except(missingFeatures).ToList();
+
+        return (missingFeatures, usableFeatures);
+    }
+
+    private List<MmseqsPersistedMonoDbEntryFeature> GetRequiredMonoDbFeaturesForTargets(List<Protein> proteinBatch)
+    {
+        var res = new List<MmseqsPersistedMonoDbEntryFeature>();
+        foreach (var protein in proteinBatch)
+        {
+            foreach (var dbTarget in MmseqsSourceDatabaseTargets)
+            {
+                if (dbTarget.UseForUnpaired) res.Add(new MmseqsPersistedMonoDbEntryFeature(protein, dbTarget.Database.Name, ColabfoldMsaDataType.Unpaired));
+                if (dbTarget.UseForPaired) res.Add(new MmseqsPersistedMonoDbEntryFeature(protein, dbTarget.Database.Name, ColabfoldMsaDataType.Paired));
+            }
+        }
+        return res;
+    }
+
     private async Task<List<ColabFoldMsaObject>> AutoCreateColabfoldMsaObjectsAsync(List<PredictionTarget> predictions, MmseqsDbLocator locator)
     {
         var result = new List<ColabFoldMsaObject>();
@@ -344,11 +447,13 @@ public class ColabfoldMmseqsHelper
         var outDir = Path.Join(outputBasePath, batchId);
         
         await Helper.CreateDirectoryAsync(workingDir);
+        await Helper.CreateDirectoryAsync(outDir);
 
         LogSomething($"starting batch {batchId} with {proteinBatch.Count} items");
         
         //*******************************************create source fasta file*******************************************************
         var qdbWorkingDir = Path.Join(workingDir, "qdb");
+        await Helper.CreateDirectoryAsync(qdbWorkingDir);
         var fastaName = $"input{Settings.FastaSuffix}";
         var queryFastaPath = Path.Join(qdbWorkingDir, fastaName);
         using (var fastaFileOutputStream = File.Create(queryFastaPath))
@@ -506,18 +611,17 @@ public class ColabfoldMmseqsHelper
     private async Task<(MmseqsDbLocator locator, List<PredictionTarget> feasiblePredictions)> CompileSourceMonoDbsFromPersistedAsync(
         string workingDir, List<string> persistedMonoDatabasesPaths, List<PredictionTarget> predictionBatch)
     {
-        const int hardcodedSearchBatchSize = 20;
         var dbProcessingBatchSize = hardcodedSearchBatchSize;
         
-
         await Helper.CreateDirectoryAsync(workingDir);
         
         var locator = new MmseqsDbLocator();
         
         //*******************************************figure out which mono dbs contain relevant entries at which indices*******************************************************
         //******************************************* check which persisted dbs used each target mono and have the desired features *******************************************************
+        var requiredFeatures = GetRequiredMonoDbFeaturesForPredictions(predictionBatch);
         var (missingFeatures, usableFeatures) = 
-            await GetUsableAndMissingFeaturesAsync(persistedMonoDatabasesPaths, predictionBatch, dbProcessingBatchSize);
+            await GetUsableAndMissingFeaturesAsync(persistedMonoDatabasesPaths, requiredFeatures, dbProcessingBatchSize);
 
         var unfeasibleMonos = missingFeatures.Select(x => x.Mono).ToList();
         List<PredictionTarget> unfeasiblePredictions = new List<PredictionTarget>();
@@ -662,10 +766,8 @@ public class ColabfoldMmseqsHelper
     }
 
     private async Task<(List<MmseqsPersistedMonoDbEntryFeature> missingFeatures, List<MmseqsPersistedMonoDbEntryFeature> usableFeatures)> 
-        GetUsableAndMissingFeaturesAsync(List<string> persistedMonoDatabasesPaths, List<PredictionTarget> predictionBatch, int existingDbParallelSearchBatchSize)
+        GetUsableAndMissingFeaturesAsync(List<string> persistedMonoDatabasesPaths, List<MmseqsPersistedMonoDbEntryFeature> requiredFeatures, int existingDbParallelSearchBatchSize)
     {
-        var requiredFeatures = GetRequiredMonoDbFeaturesForPredictions(predictionBatch);
-        
         var searchBatches = GetBatches<string>(persistedMonoDatabasesPaths, existingDbParallelSearchBatchSize);
         foreach (var searchBatch in searchBatches)
         {
@@ -879,20 +981,8 @@ public class ColabfoldMmseqsHelper
 
     private List<MmseqsPersistedMonoDbEntryFeature> GetRequiredMonoDbFeaturesForPredictions(List<PredictionTarget> predictionBatch)
     {
-        var res = new List<MmseqsPersistedMonoDbEntryFeature>();
-
-        var allProteins = predictionBatch.SelectMany(x=>x.UniqueProteins).Distinct().ToList();
-
-        foreach (var protein in allProteins)
-        {
-            foreach (var dbTarget in MmseqsSourceDatabaseTargets)
-            {
-                if (dbTarget.UseForUnpaired) res.Add(new MmseqsPersistedMonoDbEntryFeature(protein,dbTarget.Database.Name,ColabfoldMsaDataType.Unpaired));
-                if (dbTarget.UseForPaired) res.Add(new MmseqsPersistedMonoDbEntryFeature(protein, dbTarget.Database.Name, ColabfoldMsaDataType.Paired));
-            }
-        }
-
-        return res;
+        var allProteins = predictionBatch.SelectMany(x => x.UniqueProteins).Distinct().ToList();
+        return GetRequiredMonoDbFeaturesForTargets(allProteins);
     }
 
     private async Task<string> GenerateAlignDbForPairingAsync(string workingDir, string qdbPath, string searchResultDb,
@@ -1210,7 +1300,17 @@ public class ColabfoldMmseqsHelper
         return (existing, missing);
     }
 
-    private async Task<(List<Protein> existing, List<Protein> missing)> GetExistingAndMissingSetsAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> existingDatabaseLocations, IEnumerable<string> excludeIds)
+    private async Task<(List<Protein> existing, List<Protein> missing)> Deprecated_GetExistingAndMissingSetsAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> existingDatabaseLocations, IEnumerable<string> excludeIds)
+    {
+        var uniqueProteins = await GetProteinTargetsForMonoDbSearchAsync(inputFastaPaths, excludeIds);
+        var dbPaths = await GetDbEntryFoldersAsync(existingDatabaseLocations.ToList());
+        var (existing, missing) = await GetExistingAndMissingSetsAsync(uniqueProteins, dbPaths);
+
+        return (existing, missing);
+    }
+
+
+    private async Task<List<Protein>> GetProteinTargetsForMonoDbSearchAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> excludeIds)
     {
         var uniqueProteins = new HashSet<Protein>(new ProteinByIdComparer());
 
@@ -1224,7 +1324,7 @@ public class ColabfoldMmseqsHelper
                 continue;
             }
 
-            var stream = File.OpenRead(inputFastaPath);
+            await using var stream = File.OpenRead(inputFastaPath);
             var fastas = await FastaHelper.GetFastaEntriesIfValidAsync(stream, SequenceType.Protein);
             if (fastas is not null && fastas.Any())
             {
@@ -1236,17 +1336,11 @@ public class ColabfoldMmseqsHelper
                     {
                         uniqueProteins.Add(protein);
                     }
-
                 }
             }
         }
 
-        var dbPaths = await GetDbEntryFoldersAsync(existingDatabaseLocations.ToList());
-
-        var (existing, missing) =
-            await GetExistingAndMissingSetsAsync(uniqueProteins, dbPaths);
-
-        return (existing, missing);
+        return uniqueProteins.ToList();
 
     }
 
@@ -1369,7 +1463,9 @@ public class ColabfoldMmseqsHelper
     private async Task<bool> IsValidDbFolder(string path)
     {
         if (!Directory.Exists(path)) return false;
-        if ((await Helper.GetFilesAsync(path)).Length < Settings.PersistedDbMinimalNumberOfFilesInMonoDbResult) return false;
+        var files = (await Helper.GetFilesAsync(path));
+        if (files.Length < Settings.PersistedDbMinimalNumberOfFilesInMonoDbResult) return false;
+        if (!files.Select(Path.GetFileName).Contains(Settings.PersistedMonoDbInfoName)) return false;
         return true;
     }
 
