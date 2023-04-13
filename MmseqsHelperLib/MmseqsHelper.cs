@@ -262,7 +262,7 @@ namespace MmseqsHelperLib
             var headersInFile = await GetAllHeadersInSequenceDbHeaderDbAsync(headerFile);
             var headerToStartAndLengthMappings = new Dictionary<string, List<MmseqsIndexEntry>>();
 
-            var startOffset = 0;
+            long startOffset = 0;
             foreach (var header in headersInFile)
             {
                 var len = header.Length + Settings.Mmseqs2Internal_DataEntrySeparator.Length;
@@ -311,7 +311,7 @@ namespace MmseqsHelperLib
             return allLines.Select(x =>
             {
                 var entries = x.Split(Settings.Mmseqs2Internal_IndexColumnSeparator);
-                return new MmseqsIndexEntry(int.Parse(entries[0]), int.Parse(entries[1]), int.Parse(entries[2]));
+                return new MmseqsIndexEntry(int.Parse(entries[0]), long.Parse(entries[1]), int.Parse(entries[2]));
             }).ToList();
         }
 

@@ -2,7 +2,7 @@
 
 public class MmseqsSettings
 {
-    public bool PreLoadDb { get; init; } = false;
+    public bool PreLoadDb { get; set; } = false;
 
     public string Mmseqs2Internal_DbHeaderSuffix { get; init; } = @"_h";
     public string Mmseqs2Internal_DbDataSuffix { get; init; } = String.Empty;
@@ -24,7 +24,7 @@ public class MmseqsSettings
 
     public string MmseqsBinaryPath { get; set; }
 
-    public int ThreadCount { get; init; } = 1;
+    public int ThreadCount { get; set; } = 1;
     
 
     public Dictionary<string, string> PossibleDbExtensions()

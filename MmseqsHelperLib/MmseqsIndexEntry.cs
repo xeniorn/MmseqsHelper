@@ -1,3 +1,3 @@
 ﻿namespace MmseqsHelperLib;
 
-public record MmseqsIndexEntry(int Index, int StartOffset, int Length);
+public record MmseqsIndexEntry(int Index, long StartOffset, int Length);

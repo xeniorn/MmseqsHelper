@@ -18,6 +18,8 @@ internal sealed class MmseqsHelperService
 
     public async Task ExecuteAsync(MmseqsHelperMode mode)
     {
+        Strategy = new CalculationStrategy() {SuspiciousData = SuspiciousDataStrategy.PlaySafe};
+
         _logger.LogInformation($"Running mmseqs helper, mode: {mode}");
 
         var configJson = Helper.GetConfigJsonFromConfig(_configuration);
@@ -33,11 +35,9 @@ internal sealed class MmseqsHelperService
             throw new ArgumentException(message);
         }
 
-        var settings = new AutoColabfoldMmseqsSettings();
-        var mmseqsSettings = new MmseqsSettings();
-
-        mmseqsSettings.MmseqsBinaryPath = _configuration["MmseqsBinaryPath"]; //?? "/path/to/binary/mmseqs";
-        mmseqsSettings.TempPath = _configuration["TempPath"]; //?? "/path/to/temp";
+        var settings = new AutoColabfoldMmseqsSettings() {Strategy =  Strategy};
+        var mmseqsSettings = GetMmseqsSettings(_configuration);
+        
         var mmseqsHelper = new MmseqsHelper(mmseqsSettings, _logger);
 
         if (mode.Process == MmseqsAutoProcess.GenerateMonoDbs)
@@ -86,7 +86,37 @@ internal sealed class MmseqsHelperService
 
     }
 
-    
+    public CalculationStrategy Strategy { get; set; }
 
+    private MmseqsSettings GetMmseqsSettings(IConfiguration configuration)
+    {
+        var settings = new MmseqsSettings();
 
+        settings.MmseqsBinaryPath = configuration["MmseqsBinaryPath"]; //?? "/path/to/binary/mmseqs";
+        settings.TempPath = configuration["TempPath"]; //?? "/path/to/temp";
+        
+        if (int.TryParse(configuration["ThreadsPerMmseqsProcess"], out var parsedThreadCount))
+        {
+            settings.ThreadCount = parsedThreadCount;
+        }
+        else
+        {
+            _logger.LogError($"Failed to parse ThreadsPerMmseqsProcess, value should be an integer, was ({configuration["ThreadsPerMmseqsProcess"]})");
+            if (Strategy.SuspiciousData == SuspiciousDataStrategy.PlaySafe) throw new ArgumentException();
+        }
+
+        
+        if (Helper.TryParseBool(configuration["PreLoadDb"], out var parsedPreLoadDb))
+        {
+            settings.PreLoadDb = parsedPreLoadDb;
+        }
+        else
+        {
+            _logger.LogError($"Failed to parse PreLoadDb, value should be a bool, was ({configuration["PreLoadDb"]})");
+            if (Strategy.SuspiciousData == SuspiciousDataStrategy.PlaySafe) throw new ArgumentException();
+        }
+        
+
+        return settings;
+    }
 }

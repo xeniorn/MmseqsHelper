@@ -1,5 +1,6 @@
 ﻿using System.Linq;
 using System.Text.Json;
+using System.Xml;
 using Microsoft.Extensions.Configuration;
 
 namespace MmseqsHelperUI_Console;
@@ -52,5 +53,26 @@ internal static class Helper
         var values = String.Join(",\n", defaults.Select(x => $"{Jsonize(x.Key)} : {Jsonize(x.Value.preset)}"));
 
         return "{\n" + values + "\n}";
+    }
+
+    public static bool TryParseBool(string s, out bool parsedValue)
+    {
+        var trueValues = new List<string>() { "true", "t", "1" };
+        var falseValues = new List<string>() { "false", "f", "0", "-1" };
+
+        if (trueValues.Any(x=>String.Equals(s,x,StringComparison.OrdinalIgnoreCase)))
+        {
+            parsedValue = true;
+            return true;
+        }
+
+        if (falseValues.Any(x => String.Equals(s, x, StringComparison.OrdinalIgnoreCase)))
+        {
+            parsedValue = false;
+            return true;
+        }
+
+        parsedValue = false;
+        return false;
     }
 }

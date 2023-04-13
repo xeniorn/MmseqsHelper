@@ -49,16 +49,20 @@ public class MmseqsDatabaseObject
         var dataFragments = Entries.Values.ToList();
         var totalDataLength = dataFragments.Select(x => (long)(x.Length + separator.Length)).Sum();
 
+        // I chose this arbitrarily, based on some insight from https://stackoverflow.com/questions/1862982/c-sharp-filestream-optimal-buffer-size-for-writing-large-files
+        // when this is too large, e.g. Int32.MaxValue, it crashes, it can't handle it.
         var maxBuffSize = (int)2E6;
         var bufferSizeForLargeFiles = (int)(Math.Min(maxBuffSize, totalDataLength));
 
         await using var dataWriteStream = new FileStream(dataDbPath, FileMode.CreateNew, FileAccess.Write,
             FileShare.None, bufferSize: bufferSizeForLargeFiles, useAsync: true);
 
+        //4096 is the default buffer size
         await using var indexWriteStream = new FileStream(indexDbPath, FileMode.CreateNew, FileAccess.Write,
             FileShare.None, bufferSize: 4096, useAsync: true);
 
         // this might be quite inefficient
+        // on the other hand I'm avoiding ever creating a large single object, which is important because db sizes can be larger than largest possible byte[] in CLR (int32.maxvalue)
         foreach (var (index, data) in Entries)
         {
             var entryDataLength = data.Length + settings.Mmseqs2Internal_DataEntrySeparator.Length;
@@ -77,7 +81,8 @@ public class MmseqsDatabaseObject
 
     private async Task WriteDbTypeFileAsync(string dbTypePath)
     {
-        var dbTypeBytes = new byte[4];
+        // 4-bytes always
+        byte[] dbTypeBytes;
 
         switch (DatabaseType)
         {

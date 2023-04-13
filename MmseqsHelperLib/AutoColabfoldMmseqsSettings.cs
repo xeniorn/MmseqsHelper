@@ -47,6 +47,6 @@ public class AutoColabfoldMmseqsSettings
     const string colabFold_MsaConvertParamsPair = @"--msa-format-mode 5";
     const string colabFold_SearchParamsShared = @"--num-iterations 3 -a -s 8 -e 0.1 --max-seqs 10000";
 
-    public CalculationStrategy Strategy { get; } = new() {SuspiciousData = SuspiciousDataStrategy.PlaySafe};
+    public CalculationStrategy Strategy { get; init; } = new() {SuspiciousData = SuspiciousDataStrategy.PlaySafe};
     public string ColabfoldMmseqsHelperVersion { get; set; }
 }

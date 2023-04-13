@@ -1312,6 +1312,10 @@ public class ColabfoldMmseqsHelper
 
     private async Task<List<Protein>> GetProteinTargetsForMonoDbSearchAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> excludeIds)
     {
+        var preds = await GetRectifiedTargetPredictionsAsync(inputFastaPaths.ToList(), excludeIds.ToList());
+        var proteinsInPreds = preds.SelectMany(x => x.UniqueProteins).Distinct().ToList();
+        return proteinsInPreds;
+
         var uniqueProteins = new HashSet<Protein>(new ProteinByIdComparer());
 
         var excludedList = excludeIds.ToList();
