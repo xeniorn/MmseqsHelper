@@ -114,7 +114,7 @@ namespace MmseqsHelperLib
                 throw new ArgumentException("Source folder does not exist");
             }
 
-            Directory.CreateDirectory(destinationFolder);
+            await Helper.CreateDirectoryAsync(destinationFolder);
 
             var possibleExtensions = Settings.PossibleDbExtensions();
             var tasks = new List<Task>();
@@ -147,7 +147,7 @@ namespace MmseqsHelperLib
         //        throw new ArgumentException("Source folder does not exist");
         //    }
 
-        //    Directory.CreateDirectory(destinationFolder);
+        //    await Helper.CreateDirectoryAsync(destinationFolder);
 
         //    var possibleExtensions = Settings.PossibleDbExtensions();
         //    var tasks = new List<Task>();

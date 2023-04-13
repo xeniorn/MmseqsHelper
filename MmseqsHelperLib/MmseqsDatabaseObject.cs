@@ -47,10 +47,13 @@ public class MmseqsDatabaseObject
         var dbTypePath = $"{dbPath}{settings.Mmseqs2Internal_DbTypeSuffix}";
 
         var dataFragments = Entries.Values.ToList();
-        var totalDataLength = dataFragments.Select(x => x.Length + separator.Length).Sum();
+        var totalDataLength = dataFragments.Select(x => (long)(x.Length + separator.Length)).Sum();
+
+        var maxBuffSize = (int)2E6;
+        var bufferSizeForLargeFiles = (int)(Math.Min(maxBuffSize, totalDataLength));
 
         await using var dataWriteStream = new FileStream(dataDbPath, FileMode.CreateNew, FileAccess.Write,
-            FileShare.None, bufferSize: totalDataLength, useAsync: true);
+            FileShare.None, bufferSize: bufferSizeForLargeFiles, useAsync: true);
 
         await using var indexWriteStream = new FileStream(indexDbPath, FileMode.CreateNew, FileAccess.Write,
             FileShare.None, bufferSize: 4096, useAsync: true);

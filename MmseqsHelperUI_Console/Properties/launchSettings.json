@@ -6,7 +6,7 @@
     },
     "testPair": {
       "commandName": "Project",
-      "commandLineArgs": "auto-pair\r\n--InputFastaPaths=C:\\temp\\mmseqs_test\\input_pair.fasta\r\n--MmseqsBinaryPath=\"mmseqs\"\r\n--UniprotDbPath=\"\\\\storage.imp.ac.at\\resources\\colabfold\\UniRef30_2022_02\\uniref30_2202_db\"\r\n--EnvDbPath=envdb\r\n--OutputPath=C:\\temp\\mmseqs_test\\out\\pair\r\n--ExistingDatabasePaths=\"C:\\temp\\mmseqs_test\\mono_result_db\"\r\n--TempPath=C:\\temp\\mmseqs_test\\temp\\pair\r\n--ExistingA3mPaths=\"C:\\temp\\mmseqs_test\\pair_result_db\"\r\n\r\n"
+      "commandLineArgs": "auto-pair\r\n--InputFastaPaths=C:\\temp\\mmseqs_test\\res40_pair.fasta\r\n--MmseqsBinaryPath=\"mmseqs\"\r\n--UniprotDbPath=\"\\\\storage.imp.ac.at\\resources\\colabfold\\UniRef30_2022_02\\uniref30_2202_db\"\r\n--EnvDbPath=envdb\r\n--OutputPath=C:\\temp\\mmseqs_test\\out\\pair\r\n--ExistingDatabasePaths=\"C:\\temp\\mmseqs_test\\mono_result_db\"\r\n--TempPath=C:\\temp\\mmseqs_test\\temp\\pair\r\n--ExistingA3mPaths=\"C:\\temp\\mmseqs_test\\pair_result_db\"\r\n\r\n"
     },
     "testMono": {
       "commandName": "Project",

@@ -42,7 +42,6 @@ internal sealed class MmseqsHelperService
 
         if (mode.Process == MmseqsAutoProcess.GenerateMonoDbs)
         {
-           
             settings.Custom.Add("UniprotDbPath", _configuration["UniprotDbPath"]); //?? "/path/to/uniprotdb");
             settings.Custom.Add("EnvDbPath", _configuration["EnvDbPath"]); //?? "/path/to/envdb");
             settings.TempPath = _configuration["TempPath"]; //?? "/path/to/temp";
@@ -65,6 +64,7 @@ internal sealed class MmseqsHelperService
         else if (mode.Process == MmseqsAutoProcess.GenerateA3mFilesForColabfold)
         {
             settings.Custom.Add("UniprotDbPath", _configuration["UniprotDbPath"]); //?? "/path/to/uniprotdb");
+            settings.Custom.Add("EnvDbPath", _configuration["EnvDbPath"]); //?? "/path/to/envdb");
             settings.TempPath = _configuration["TempPath"]; //?? "/path/to/temp";
 
             var inputFastaPaths = _configuration["InputFastaPaths"]?.Split(',') ?? Array.Empty<string>();

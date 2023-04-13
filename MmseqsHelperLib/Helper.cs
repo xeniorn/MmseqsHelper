@@ -147,4 +147,9 @@ public static partial class Helper
     {
         return dbName.ToUpper().Replace(" ", "").Replace("-", "_");
     }
+
+    public static async Task CreateDirectoryAsync(string directory)
+    {
+        await Task.Run(() => Directory.CreateDirectory(directory));
+    }
 }
