@@ -1,9 +1,7 @@
-﻿using System.Security.AccessControl;
-using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using AlphafoldPredictionLib;
+﻿using AlphafoldPredictionLib;
 using FastaHelperLib;
 using Microsoft.Extensions.Logging;
+using System.Text;
 
 namespace MmseqsHelperLib;
 
@@ -82,6 +80,12 @@ public class ColabfoldMmseqsHelper
             _logger.LogInformation($"{existingTargets.Count}/{existingTargets.Count + missingTargets.Count} targets already exist, will not recalculate those.");
         }
 
+        var predictionsPerMonomerCount = GroupPredictionsByNumberOfMonomers(missingTargets);
+        foreach (var (numberOfMonomers, targetList) in predictionsPerMonomerCount)
+        {
+            _logger.LogInformation($"Number of missing predictions containing {numberOfMonomers} monomers: {targetList.Count}");
+        }
+
         // all predictions use same mono references (are "rectified"), distinct by reference is ok
         var allMonos = missingTargets.SelectMany(x => x.UniqueProteins).Distinct().ToList();
         var (existingMonos, missingMonos) = await GetExistingAndMissingSetsAsync(allMonos, filteredPersistedMonoDbPaths);
@@ -122,6 +126,20 @@ public class ColabfoldMmseqsHelper
 
         _logger.LogInformation($"Number of MSA predictions carried out: {allSuccessful.Count}");
 
+    }
+
+    private List<(int numberOfMonomers, List<PredictionTarget> predictionTargets)> GroupPredictionsByNumberOfMonomers(List<PredictionTarget> targets)
+    {
+        var res = new Dictionary<int, List<PredictionTarget>>();
+
+        foreach (var predictionTarget in targets)
+        {
+            var monomerCount = predictionTarget.UniqueProteins.Count;
+            if (!res.ContainsKey(monomerCount)) res.Add(monomerCount, new List<PredictionTarget>());
+            res[monomerCount].Add(predictionTarget);
+        }
+
+        return res.Select(x=>(x.Key, x.Value)).ToList();
     }
 
     public async Task GenerateColabfoldMonoDbsFromFastasAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> persistedMonoDatabaseParentFolderLocations, IEnumerable<string> excludedIds, string outputPath)
@@ -239,10 +257,10 @@ public class ColabfoldMmseqsHelper
         return (missingFeatures, usableFeatures);
     }
 
-    private List<MmseqsPersistedMonoDbEntryFeature> GetRequiredMonoDbFeaturesForTargets(List<Protein> proteinBatch)
+    private List<MmseqsPersistedMonoDbEntryFeature> GetRequiredMonoDbFeaturesForTargets(List<Protein> proteins)
     {
         var res = new List<MmseqsPersistedMonoDbEntryFeature>();
-        foreach (var protein in proteinBatch)
+        foreach (var protein in proteins)
         {
             foreach (var dbTarget in MmseqsSourceDatabaseTargets)
             {
@@ -643,7 +661,8 @@ public class ColabfoldMmseqsHelper
         }
 
         var predictionsToExtractDataFor = predictionBatch.Except(unfeasiblePredictions).ToList();
-        
+        var predictionsForPairing = GetPredictionsThatRequirePairing(predictionsToExtractDataFor);
+
         //******************************************* generate new qdb *******************************************************
         var (queryDatabase, qdbIndicesMapping) = GenerateQdbForPredictionBatch(predictionsToExtractDataFor);
         locator.QdbIndicesMapping = qdbIndicesMapping;
@@ -669,12 +688,13 @@ public class ColabfoldMmseqsHelper
                 .Where(x=>x.DatabaseName == dbTarget.Database.Name).ToList();
 
             var localPath = Path.Join(workingDir, dbTarget.Database.Name);
+            await Helper.CreateDirectoryAsync(localPath);
             if (dbTarget.UseForPaired)
             {
                 var dataType = ColabfoldMsaDataType.Paired;
                 var monoToAlignFragmentMappings = await GenerateDataDbFragmentsForSourceDatabaseAsync(
                     dbTarget.Database, featuresForThisSourceDb, dataType, dbProcessingBatchSize);
-                var alignDbObject = GenerateDbObjectForPredictionBatch(predictionsToExtractDataFor, monoToAlignFragmentMappings, locator, dataType);
+                var alignDbObject = GenerateDbObjectForPredictionBatch(predictionsForPairing, monoToAlignFragmentMappings, locator, dataType);
 
                 var pairedAlignDb = Path.Join(localPath, "align1");
                 var alignDbDataDbPath = $"{pairedAlignDb}{Mmseqs.Settings.Mmseqs2Internal_DbDataSuffix}";
@@ -700,6 +720,12 @@ public class ColabfoldMmseqsHelper
 
         await Task.WhenAll(writeTasks);
         return (locator, predictionsToExtractDataFor);
+    }
+
+    private List<PredictionTarget> GetPredictionsThatRequirePairing(List<PredictionTarget> targets)
+    {
+        //TODO: add support for explicitly asking for no-pairing (possibly per target?)
+        return targets.Where(x => x.IsHeteroComplex).ToList();
     }
 
     private MmseqsDatabaseObject GenerateDbObjectForPredictionBatch(
@@ -752,7 +778,7 @@ public class ColabfoldMmseqsHelper
         var monoToDataFragmentMappings = new Dictionary<Protein, byte[]>();
         
         var relevantFeatures = featuresCollection
-            .Where(x=>x.DatabaseName == targetDb.Name && x.SourceType == ColabfoldMsaDataType.Paired).ToList();
+            .Where(x=>x.DatabaseName == targetDb.Name && x.SourceType == dataType).ToList();
         var relevantLocations = relevantFeatures
             .Select(x => x.DbPath).Distinct().ToList();
 
@@ -772,7 +798,7 @@ public class ColabfoldMmseqsHelper
         foreach (var searchBatch in searchBatches)
         {
             var featuresToBeFound =
-                requiredFeatures.Where(x => !string.IsNullOrWhiteSpace(x.FeatureSubFolderPath)).ToList();
+                requiredFeatures.Where(x => string.IsNullOrWhiteSpace(x.FeatureSubFolderPath)).ToList();
             var monosThatStillNeedToBeFound = featuresToBeFound.Select(x => x.Mono).Distinct().ToList();
 
             var monoToLocationsMapping =
@@ -784,10 +810,10 @@ public class ColabfoldMmseqsHelper
                 var locationsContainingMono = monoToLocationsMapping[feature.Mono].Select(x => x.dbLocation);
                 foreach (var location in locationsContainingMono)
                 {
-                    var subFoldersInLocation = await Helper.GetDirectoriesAsync(location);
+                    var subFoldersInLocation = (await Helper.GetDirectoriesAsync(location)).Select(x=> Path.GetFileName(x)).ToList();
                     var expectedSubFolder = feature.DatabaseName;
                     var matchingSubFolders = subFoldersInLocation.Where(x =>
-                        Helper.GetStandardizedDbName(Path.GetFileName(x)) ==
+                        Helper.GetStandardizedDbName(x) ==
                         Helper.GetStandardizedDbName(expectedSubFolder)).ToList();
 
                     if (matchingSubFolders.Any())
@@ -802,6 +828,7 @@ public class ColabfoldMmseqsHelper
                             }
                         }
 
+                        // theoretically there be multiple, should never happen but eh. At this point
                         var subFolderForTargetDatabase = matchingSubFolders.First();
                         var subPath = Path.Join(location, subFolderForTargetDatabase);
                         string requiredDbName;
@@ -981,8 +1008,22 @@ public class ColabfoldMmseqsHelper
 
     private List<MmseqsPersistedMonoDbEntryFeature> GetRequiredMonoDbFeaturesForPredictions(List<PredictionTarget> predictionBatch)
     {
-        var allProteins = predictionBatch.SelectMany(x => x.UniqueProteins).Distinct().ToList();
-        return GetRequiredMonoDbFeaturesForTargets(allProteins);
+        var requiringPairing = GetPredictionsThatRequirePairing(predictionBatch);
+        var notRequiringPairing = predictionBatch.Except(requiringPairing).ToList();
+        
+        var proteinsRequiringPairing = requiringPairing.SelectMany(x => x.UniqueProteins).Distinct().ToList();
+        var proteinsInPairlessTargets = notRequiringPairing.SelectMany(x => x.UniqueProteins).Distinct().ToList();
+
+        var allProteins = proteinsRequiringPairing.Concat(proteinsInPairlessTargets).Distinct().ToList();
+        var allFeatures = GetRequiredMonoDbFeaturesForTargets(allProteins);
+
+        var proteinsNotRequiringPairing = proteinsInPairlessTargets.Except(proteinsRequiringPairing).ToList();
+        var notNeededFeatures = allFeatures.Where(x=>x.SourceType == ColabfoldMsaDataType.Paired
+        && proteinsNotRequiringPairing.Contains(x.Mono));
+
+        var finalFeatures = allFeatures.Except(notNeededFeatures).ToList();
+
+        return finalFeatures;
     }
 
     private async Task<string> GenerateAlignDbForPairingAsync(string workingDir, string qdbPath, string searchResultDb,
