@@ -83,7 +83,7 @@ public class ColabfoldMmseqsHelper
         var predictionsPerMonomerCount = GroupPredictionsByNumberOfMonomers(missingTargets);
         foreach (var (numberOfMonomers, targetList) in predictionsPerMonomerCount)
         {
-            _logger.LogInformation($"Number of missing predictions containing {numberOfMonomers} monomers: {targetList.Count}");
+            _logger.LogInformation($"Number of missing predictions containing {numberOfMonomers} unique monomers: {targetList.Count}");
         }
 
         // all predictions use same mono references (are "rectified"), distinct by reference is ok
@@ -275,6 +275,8 @@ public class ColabfoldMmseqsHelper
     {
         var result = new List<ColabFoldMsaObject>();
 
+        var targetsWithPairing = GetPredictionsThatRequirePairing(predictions);
+
         foreach (var predictionTarget in predictions)
         {
             List<AnnotatedMsaData> dataEntries = new List<AnnotatedMsaData>();
@@ -283,11 +285,10 @@ public class ColabfoldMmseqsHelper
 
             foreach (var dbTarget in MmseqsSourceDatabaseTargets)
             {
-                var pairedA3mDbPath = locator.PairedA3mDbPathMapping[dbTarget];
-                var unPairedA3mDbPath = locator.UnPairedA3mDbPathMapping[dbTarget];
-
-                var pairedDataCollection = dbTarget.UseForPaired ? await Mmseqs.ReadEntriesWithIndicesFromDataDbAsync(pairedA3mDbPath, qdbIndices) : null;
-                var unpairedDataCollection = dbTarget.UseForUnpaired ? await Mmseqs.ReadEntriesWithIndicesFromDataDbAsync(unPairedA3mDbPath, qdbIndices) : null;
+                var pairedDataCollection = dbTarget.UseForPaired ? 
+                    await Mmseqs.ReadEntriesWithIndicesFromDataDbAsync(locator.PairedA3mDbPathMapping[dbTarget], qdbIndices) : null;
+                var unpairedDataCollection = dbTarget.UseForUnpaired ? 
+                    await Mmseqs.ReadEntriesWithIndicesFromDataDbAsync(locator.UnPairedA3mDbPathMapping[dbTarget], qdbIndices) : null;
 
                 var unpairedDataDict = new Dictionary<Protein, byte[]>();
                 var pairedDataDict = new Dictionary<Protein, byte[]>();
@@ -298,13 +299,12 @@ public class ColabfoldMmseqsHelper
 
                     if (dbTarget.UseForUnpaired)
                     {
-                        
                         var unpairedData = unpairedDataCollection!.Single(x => x.index == qdbIndices[i]).data;
                         unpairedDataDict.Add(protein, unpairedData);
                         dataEntries.Add(new AnnotatedMsaData(ColabfoldMsaDataType.Unpaired, dbTarget, unpairedDataDict));
                     }
 
-                    if (dbTarget.UseForPaired)
+                    if (dbTarget.UseForPaired && targetsWithPairing.Contains(predictionTarget))
                     {
                         var pairedData = pairedDataCollection!.Single(x => x.index == qdbIndices[i]).data;
                         pairedDataDict.Add(protein, pairedData);
@@ -661,16 +661,19 @@ public class ColabfoldMmseqsHelper
         }
 
         var predictionsToExtractDataFor = predictionBatch.Except(unfeasiblePredictions).ToList();
-        var predictionsForPairing = GetPredictionsThatRequirePairing(predictionsToExtractDataFor);
+        //var predictionsForPairing = GetPredictionsThatRequirePairing(predictionsToExtractDataFor);
+        var predictionsForPairing = predictionsToExtractDataFor;
 
+        //TODO: need to separate a qdb that includes pairing and qdb that doesn't use pairing
         //******************************************* generate new qdb *******************************************************
-        var (queryDatabase, qdbIndicesMapping) = GenerateQdbForPredictionBatch(predictionsToExtractDataFor);
-        locator.QdbIndicesMapping = qdbIndicesMapping;
+        var predictionToIndicesMapping = GeneratePredictionToIndexMapping(predictionsToExtractDataFor);
+        var queryDatabaseForPairing = GenerateQdbForPairing(predictionsToExtractDataFor, predictionToIndicesMapping);
+        locator.QdbIndicesMapping = predictionToIndicesMapping;
 
-        var pairedQdb = Path.Join(workingDir, "qdb");
-        locator.QdbPath = pairedQdb;
+        var pairedQdb = Path.Join(workingDir, "qdb_pair");
+        locator.PairingQdbPath = pairedQdb;
         var writeTasks = new List<Task> {
-            queryDatabase.WriteToFileSystemAsync(Mmseqs.Settings, pairedQdb)
+            queryDatabaseForPairing.WriteToFileSystemAsync(Mmseqs.Settings, pairedQdb)
         };
 
         //******************************************* and read in relevant fragments of align files*******************************************************
@@ -710,7 +713,7 @@ public class ColabfoldMmseqsHelper
                     dbTarget.Database, featuresForThisSourceDb, dataType, dbProcessingBatchSize);
                 var unpairedA3mDbObject = GenerateDbObjectForPredictionBatch(predictionsToExtractDataFor, monoToUnpairedA3mFragmentMappings, locator, dataType);
 
-                var unpairedA3mDb = Path.Join(localPath, "unpaired_a3m_mmseqsdb");
+                var unpairedA3mDb = Path.Join(localPath, "unpaired_a3m");
                 var unpairedA3mDbDataDbPath = $"{unpairedA3mDb}{Mmseqs.Settings.Mmseqs2Internal_DbDataSuffix}";
 
                 writeTasks.Add(unpairedA3mDbObject.WriteToFileSystemAsync(Mmseqs.Settings, unpairedA3mDbDataDbPath));
@@ -932,35 +935,55 @@ public class ColabfoldMmseqsHelper
         }
     }
 
+    private Dictionary<PredictionTarget, List<int>>  GeneratePredictionToIndexMapping(List<PredictionTarget> targets)
+    {
+        var predictionTargetToDbIndicesMapping = new Dictionary<PredictionTarget, List<int>>();
+        var generatedMonoIndex = 0;
+        
+        foreach (var predictionTarget in targets)
+        {
+            var indexList = new List<int>();
 
-    private (MmseqsQueryDatabaseContainer mmseqsQueryDatabase, Dictionary<PredictionTarget, List<int>> qdbIndicesMapping) 
-        GenerateQdbForPredictionBatch(List<PredictionTarget> predictionBatch)
+            foreach (var _ in predictionTarget.UniqueProteins)
+            {
+                indexList.Add(generatedMonoIndex);
+                generatedMonoIndex++;
+            }
+            predictionTargetToDbIndicesMapping.Add(predictionTarget, indexList);
+        }
+        
+        return predictionTargetToDbIndicesMapping;
+    }
+
+
+
+    private MmseqsQueryDatabaseContainer GenerateQdbForPairing(List<PredictionTarget> targets, Dictionary<PredictionTarget, List<int>> targetToDbIndicesMapping)
     {
         var mmseqsQueryDatabase = new MmseqsQueryDatabaseContainer();
-        var qdbIndicesMapping = new Dictionary<PredictionTarget, List<int>>();
 
-        var generatedMonoIndex = 0;
         var generatedPredictionIndex = 0;
 
         var qdbDataDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.Sequence_AMINO_ACIDS);
         var qdbHeaderDbObject = new MmseqsDatabaseObject(MmseqsDatabaseType.Header_GENERIC_DB);
         var qdbLookupObject = new MmseqsLookupObject();
 
-        foreach (var predictionTarget in predictionBatch)
+        foreach (var predictionTarget in targets)
         {
-            var indexList = new List<int>();
+            var indexList = targetToDbIndicesMapping[predictionTarget];
 
-            foreach (var protein in predictionTarget.UniqueProteins)
+            if (indexList.Count != predictionTarget.UniqueProteins.Count)
+                throw new Exception("Faulty input. Mismatch between index and protein counts");
+
+            for (int i = 0; i < predictionTarget.UniqueProteins.Count; i++)
             {
-                qdbDataDbObject.Add(Encoding.ASCII.GetBytes(protein.Sequence), generatedMonoIndex);
-                qdbHeaderDbObject.Add(Encoding.ASCII.GetBytes(protein.Id), generatedMonoIndex);
-                qdbLookupObject.Add(generatedMonoIndex, protein.Id, generatedPredictionIndex);
+                var monoIndex = indexList[i];
+                var protein = predictionTarget.UniqueProteins[i];
 
-                indexList.Add(generatedMonoIndex);
-                generatedMonoIndex++;
+                qdbDataDbObject.Add(Encoding.ASCII.GetBytes(protein.Sequence), monoIndex);
+                qdbHeaderDbObject.Add(Encoding.ASCII.GetBytes(protein.Id), monoIndex);
+                qdbLookupObject.Add(monoIndex, protein.Id, generatedPredictionIndex);
             }
 
-            qdbIndicesMapping.Add(predictionTarget, indexList);
             generatedPredictionIndex++;
         }
         
@@ -968,7 +991,7 @@ public class ColabfoldMmseqsHelper
         mmseqsQueryDatabase.HeaderDbObject = qdbHeaderDbObject;
         mmseqsQueryDatabase.LookupObject = qdbLookupObject;
         
-        return (mmseqsQueryDatabase, qdbIndicesMapping);
+        return mmseqsQueryDatabase;
     }
 
     private async Task<Dictionary<Protein, List<(string dbLocation, List<int> qdbIndices)>>> GetMonoToDbAndIndexMappingsForSearchBatch(List<string> dbLocationsToSearch, List<Protein> proteins)
@@ -1207,7 +1230,7 @@ public class ColabfoldMmseqsHelper
         {
             LogSomething($"Performing MSA pairing for {dbTarget.Database.Name}...");
             var prePairAlignDb = dbLocatorObject.PrePairingAlignDbPathMapping[dbTarget];
-            var pairedDbPath = await PerformPairingForDbTargetAsync(workingDir, dbLocatorObject.QdbPath, prePairAlignDb, dbTarget);
+            var pairedDbPath = await PerformPairingForDbTargetAsync(workingDir, dbLocatorObject.PairingQdbPath, prePairAlignDb, dbTarget);
             dbLocatorObject.PairedA3mDbPathMapping[dbTarget] = pairedDbPath;
         }
 

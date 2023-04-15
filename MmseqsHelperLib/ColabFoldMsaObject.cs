@@ -19,7 +19,7 @@ public class ColabFoldMsaObject
     public string HashId { get; }
 
     public PredictionTarget PredictionTarget { get; }
-    private ColabfoldMsaMetadataInfo? Metadata { get; set; }
+    private ColabfoldMsaMetadataInfo Metadata { get; set; }
     
     public async Task WriteToFileSystemAsync(AutoColabfoldMmseqsSettings settings, string targetFolder)
     {

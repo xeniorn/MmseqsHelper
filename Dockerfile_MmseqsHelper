@@ -13,27 +13,28 @@ FROM mcr.microsoft.com/dotnet/sdk:7.0 AS build_base
 
 RUN dotnet nuget add source --name myget_ja https://www.myget.org/F/flappy-bird/api/v3/index.json
 
+# fastalib is now a nuget package
+#######################################################################################
+#FROM build_base AS build_fastalib
+#
+#### local
+#ARG local_dir=/source/FastaHelperLib
+#ARG source_project=FastaHelperLib
+#
+#### inherited
+#ARG dotnet_target_runtime
+#ARG build_dir_absolute
+#ARG app_build_configuration
+#ARG use_dotnet_self_contained
+#
+#WORKDIR ${local_dir}
+#COPY ${source_project} ./
+#RUN dotnet restore -r ${dotnet_target_runtime}
+#RUN dotnet build -c ${app_build_configuration} -o ${build_dir_absolute} -r ${dotnet_target_runtime} --self-contained ${use_dotnet_self_contained} --no-restore
+#
+#
 ######################################################################################
-FROM build_base AS build_fastalib
-
-### local
-ARG local_dir=/source/FastaHelperLib
-ARG source_project=FastaHelperLib
-
-### inherited
-ARG dotnet_target_runtime
-ARG build_dir_absolute
-ARG app_build_configuration
-ARG use_dotnet_self_contained
-
-WORKDIR ${local_dir}
-COPY ${source_project} ./
-RUN dotnet restore -r ${dotnet_target_runtime}
-RUN dotnet build -c ${app_build_configuration} -o ${build_dir_absolute} -r ${dotnet_target_runtime} --self-contained ${use_dotnet_self_contained} --no-restore
-
-
-######################################################################################
-FROM build_fastalib AS build_afdesignerlib
+FROM build_base AS build_afdesignerlib
 
 ### local
 ARG local_dir=/source/AlphafoldPredictionLib
