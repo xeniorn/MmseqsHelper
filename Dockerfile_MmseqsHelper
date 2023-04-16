@@ -1,7 +1,7 @@
 # https://chrissainty.com/containerising-blazor-applications-with-docker-containerising-a-blazor-webassembly-app/
 # https://stackoverflow.com/questions/47103570/asp-net-core-2-0-multiple-projects-solution-docker-file
 
-# most linux distros don't use "musl-type" libc, and should use normal ${dotnet_target_runtime} runtime
+# most linux distros (that are not alpine) don't use "musl-type" libc, and should use normal ${dotnet_target_runtime} runtime
 ARG dotnet_target_runtime="linux-x64"
 ARG build_dir_absolute="/app/build"
 ARG publish_folder_absolute="/app/publish"
@@ -70,7 +70,6 @@ RUN dotnet restore -r ${dotnet_target_runtime}
 RUN dotnet build -c ${app_build_configuration} -o ${build_dir_absolute} -r ${dotnet_target_runtime} --self-contained ${use_dotnet_self_contained} --no-restore
 
 
-
 ######################################################################################
 FROM build_mmseqslib AS build_mmseqscli
 
@@ -100,7 +99,21 @@ ARG app_build_configuration
 ARG use_dotnet_self_contained
 ARG publish_folder_absolute
 
-RUN dotnet publish --self-contained true --runtime ${dotnet_target_runtime}  -c ${app_build_configuration} -o ${publish_folder_absolute}
+RUN dotnet publish --self-contained true --runtime ${dotnet_target_runtime}  -c ${app_build_configuration} -o ${publish_folder_absolute} --no-restore
+
+
+######################################################################################
+FROM xeniorn/mmseqs2:v2023-03-13 AS vmtouch_build
+
+RUN apt-get update && \
+apt-get upgrade -y && \
+apt-get install -y git make gcc && \
+git clone https://github.com/hoytech/vmtouch.git && \
+cd vmtouch && \
+make && \
+make install && \
+mkdir -p /build_out && \
+cp vmtouch /build_out/vmtouch
 
 
 ######################################################################################
@@ -111,6 +124,10 @@ ARG publish_folder_absolute
 
 ### local
 ARG docker_final_helper_folder="/app"
+
+###############
+# vmtouch
+COPY --from=vmtouch_build /build_out/vmtouch /usr/local/bin/vmtouch
 
 ###############
 # built and published cli

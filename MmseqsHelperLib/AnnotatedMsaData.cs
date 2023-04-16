@@ -11,7 +11,9 @@ public class AnnotatedMsaData
         DataDict = dataDict;
     }
 
+
     public Dictionary<Protein, byte[]> DataDict { get; }
     public ColabfoldMsaDataType DataType { get; }
     public MmseqsSourceDatabaseTarget SourceDatabaseTarget { get; }
+
 }

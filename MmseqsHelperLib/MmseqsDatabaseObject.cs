@@ -53,9 +53,7 @@ public class MmseqsDatabaseObject
         // when this is too large, e.g. Int32.MaxValue, it crashes, it can't handle it.
         var maxBuffSize = (int)2E6;
         var bufferSizeForLargeFiles = (int)(Math.Min(maxBuffSize, totalDataLength));
-
-        // TODO: possibly cannot await using because this needs to keep writing or something... not sure. Testing 2023-04-15
-
+        
         await using var dataWriteStream = new FileStream(dataDbPath, FileMode.CreateNew, FileAccess.Write,
             FileShare.None, bufferSize: bufferSizeForLargeFiles, useAsync: true);
 

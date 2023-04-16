@@ -2,10 +2,10 @@
 
 public class MmseqsSourceDatabase
 {
-    public MmseqsSourceDatabase(string dbName, string dbPath, MmseqsSourceDatabaseFeatures features)
+    public MmseqsSourceDatabase(string name, string path, MmseqsSourceDatabaseFeatures features)
     {
-        this.Name = dbName;
-        this.Path = dbPath;
+        this.Name = name;
+        this.Path = path;
         this.Features = features;
     }
 

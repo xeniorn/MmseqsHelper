@@ -1,6 +1,8 @@
 ﻿using AlphafoldPredictionLib;
 using FastaHelperLib;
 using Microsoft.Extensions.Logging;
+using System.Linq;
+using System.Reflection.Metadata.Ecma335;
 using System.Text;
 
 namespace MmseqsHelperLib;
@@ -35,8 +37,15 @@ public class ColabfoldMmseqsHelper
             envDbTarget
         };
 
-        const string hardCodedVersionForNow = "0.0.1.20230413";
-        Settings.ColabfoldMmseqsHelperVersion = hardCodedVersionForNow;
+        const string hardCodedVersionForNow = "0.0.2.230416";
+        Settings.ColabfoldMmseqsHelperDatabaseVersion = hardCodedVersionForNow;
+
+        // shady. TODO: rethink this
+#if DEBUG
+        Settings.MmseqsVersion = "fake_version_1.0.0";
+#else
+        Settings.MmseqsVersion = Mmseqs.GetVersionAsync().GetAwaiter().GetResult();
+#endif
 
     }
 
@@ -271,10 +280,8 @@ public class ColabfoldMmseqsHelper
         return res;
     }
 
-    private async Task<List<ColabFoldMsaObject>> AutoCreateColabfoldMsaObjectsAsync(List<PredictionTarget> predictions, MmseqsDbLocator locator)
+    private async IAsyncEnumerable<ColabFoldMsaObject> AutoCreateColabfoldMsaObjectsAsync(List<PredictionTarget> predictions, MmseqsDbLocator locator)
     {
-        var result = new List<ColabFoldMsaObject>();
-
         var targetsWithPairing = GetPredictionsThatRequirePairing(predictions);
 
         foreach (var predictionTarget in predictions)
@@ -293,6 +300,7 @@ public class ColabfoldMmseqsHelper
                 var unpairedDataDict = new Dictionary<Protein, byte[]>();
                 var pairedDataDict = new Dictionary<Protein, byte[]>();
 
+                // TODO: fix this, it's loading stuff part by part while the info expects en-block for each dbTarget
                 for (int i = 0; i < predictionTarget.UniqueProteins.Count; i++)
                 {
                     var protein = predictionTarget.UniqueProteins[i];
@@ -301,24 +309,22 @@ public class ColabfoldMmseqsHelper
                     {
                         var unpairedData = unpairedDataCollection!.Single(x => x.index == qdbIndices[i]).data;
                         unpairedDataDict.Add(protein, unpairedData);
-                        dataEntries.Add(new AnnotatedMsaData(ColabfoldMsaDataType.Unpaired, dbTarget, unpairedDataDict));
                     }
 
                     if (dbTarget.UseForPaired && targetsWithPairing.Contains(predictionTarget))
                     {
                         var pairedData = pairedDataCollection!.Single(x => x.index == qdbIndices[i]).data;
                         pairedDataDict.Add(protein, pairedData);
-                        dataEntries.Add(new AnnotatedMsaData(ColabfoldMsaDataType.Paired, dbTarget, pairedDataDict));
                     }
                 }
 
+                dataEntries.Add(new AnnotatedMsaData(ColabfoldMsaDataType.Unpaired, dbTarget, unpairedDataDict));
+                dataEntries.Add(new AnnotatedMsaData(ColabfoldMsaDataType.Paired, dbTarget, pairedDataDict));
             }
             
             var msaObj = new ColabFoldMsaObject(dataEntries, predictionTarget);
-            result.Add(msaObj);
+            yield return msaObj;
         }
-
-        return result;
     }
 
     private async Task<string> GenerateSpecialMonoA3mDbForReferenceDbAsync(string workingDir, string qdbPath, string profileResultDb, string searchResultDb, MmseqsSourceDatabaseTarget refDbTarget)
@@ -575,21 +581,16 @@ public class ColabfoldMmseqsHelper
         await Task.WhenAll(copyTasks);
 
         //******************************************* print out the database info *************************************
-        var info = new PersistedMonoDbMetadataInfo()
-        {
-            CreateTime = DateTime.Now,
-            ReferenceDbTarget = ReferenceSourceDatabaseTarget,
-            DatabaseTargets = MmseqsSourceDatabaseTargets,
-            MmseqsHelperVersion = Settings.ColabfoldMmseqsHelperVersion,
-            TargetCount = proteinBatch.Count,
-            MmseqsVersion = await Mmseqs.GetVersionAsync()
-        };
+        var info = new PersistedMonoDbMetadataInfo(createTime: DateTime.Now,
+            referenceDbTarget: ReferenceSourceDatabaseTarget, databaseTargets: MmseqsSourceDatabaseTargets,
+            mmseqsHelperDatabaseVersion: Settings.ColabfoldMmseqsHelperDatabaseVersion, targetCount: proteinBatch.Count,
+            mmseqsVersion: Settings.MmseqsVersion);
 
         var infoPath = Path.Join(outDir, Settings.PersistedMonoDbInfoName);
         await info.WriteToFileSystemAsync(infoPath);
 
     }
-
+    
     private async Task<(string unpairedA3mDb, string forPairAlignDb)> 
         GenerateDbsForTagetSourceDbAsync(MmseqsSourceDatabaseTarget dbTarget, string qdbPath, string refProfileDb, string workingDir)
     {
@@ -789,7 +790,7 @@ public class ColabfoldMmseqsHelper
         foreach (var searchBatch in relevantLocationBatches)
         {
             // the monoToAlignFragmentMappings dict gets mutated each round
-            await AppendFragmentDictionaryForSearchBatchAsync(monoToDataFragmentMappings, searchBatch, relevantFeatures, dataType, targetDb);
+            await AppendFragmentDictionaryForSearchBatchAsync(monoToDataFragmentMappings, searchBatch, relevantFeatures, dataType);
         }
         return monoToDataFragmentMappings;
     }
@@ -871,7 +872,8 @@ public class ColabfoldMmseqsHelper
 
     /// <summary>
     /// Append the mutable dictionary by all the data fragments for relevant features. Will read e.g. 20 persisted mono db locations at once for presence of
-    /// (for_pair_align or unpaired) data, depending on input, that belongs to the target source database.
+    /// (for_pair_align or unpaired) data, depending on input, that belongs to the target source database (read from features?).
+    /// ... fragile, hard to understand. Needs to be rewritten.
     /// </summary>
     /// <param name="mutableMonoToDataFragmentMapping"></param>
     /// <param name="dbLocationsToProcess"></param>
@@ -883,8 +885,8 @@ public class ColabfoldMmseqsHelper
     private async Task AppendFragmentDictionaryForSearchBatchAsync(Dictionary<Protein, byte[]> mutableMonoToDataFragmentMapping,
         List<string> dbLocationsToProcess,
         List<MmseqsPersistedMonoDbEntryFeature> preprocessedFeatures,
-        ColabfoldMsaDataType targetMsaDataType,
-        MmseqsSourceDatabase sourceDatabase)
+        ColabfoldMsaDataType targetMsaDataType
+        )
     {
         var resultTasksMapping = new List<(string db, Task<List<(byte[] data, int index)>> resultTask)>();
         foreach (var dbLocation in dbLocationsToProcess)
@@ -1197,7 +1199,7 @@ public class ColabfoldMmseqsHelper
 
         var batchGuid = Guid.NewGuid();
         var batchId = batchGuid.ToString();
-        var shortId = Helper.GetMd5Hash(batchId).Substring(0, Settings.PersistedA3mDbShortBatchIdLength);
+        var shortBatchId = Helper.GetMd5Hash(batchId).Substring(0, Settings.PersistedA3mDbShortBatchIdLength);
 
         var workingDir = Path.Join(Settings.TempPath, batchId);
         await Helper.CreateDirectoryAsync(workingDir);
@@ -1234,35 +1236,43 @@ public class ColabfoldMmseqsHelper
             dbLocatorObject.PairedA3mDbPathMapping[dbTarget] = pairedDbPath;
         }
 
-        //*******************************************construct invdividual result dbs*******************************************************
-        LogSomething($"Combining paired and unpaired data...");
-        var colabfoldMsaObjects = await AutoCreateColabfoldMsaObjectsAsync(feasiblePredictionTargets, dbLocatorObject);
+        //*******************************************construct individual result dbs*******************************************************
+        LogSomething($"Generating final a3m files...");
+        //TODO: can already start output of non-pair ones while pairing is running 
 
-        //*******************************************write the result files*************************************
-        LogSomething($"Writing {colabfoldMsaObjects.Count} result files in {outputPath}...");
+        var msaObjectCounter = 0;
         var writeTasks = new List<Task>();
-        //TODO: some kind of batch limiting this, might not be good to write 1000 at once?
-        foreach (var msaObject in colabfoldMsaObjects)
+        await foreach (var msaObject in AutoCreateColabfoldMsaObjectsAsync(feasiblePredictionTargets, dbLocatorObject))
         {
-            var autoName = msaObject.HashId;
-            var subFolderPath = GetMsaResultSubFolderPath(autoName, shortId);
-            var targetFolder = Path.Join(outputPath, subFolderPath);
-            await Helper.CreateDirectoryAsync(targetFolder);
-            writeTasks.Add(msaObject.WriteToFileSystemAsync(Settings, targetFolder));
+            msaObjectCounter++;
+            //var autoName = msaObject.HashId;
+            var predictionSubFolderPath = GetMsaResultsSubFolderPathForPrediction(msaObject.PredictionTarget);
+            var resultSubPath = Path.Join(predictionSubFolderPath, shortBatchId);
+            var fullResultPath = Path.Join(outputPath, resultSubPath);
+
+            //*******************************************write the result files*************************************
+            var pt = msaObject.PredictionTarget;
+            LogSomething($"Writing {Helper.GetMultimerName(pt)} result with total length {pt.TotalLength} in {fullResultPath}...");
+            await Helper.CreateDirectoryAsync(fullResultPath);
+            writeTasks.Add(msaObject.WriteToFileSystemAsync(Settings, fullResultPath));
             resultList.Add(msaObject.PredictionTarget);
         }
-
+        
         await Task.WhenAll(writeTasks);
+        LogSomething($"Wrote {msaObjectCounter} result files in {outputPath}.");
+
         return resultList;
     }
 
-    private string GetMsaResultSubFolderPath(string predictionHash, string batchId)
+    private string GetMsaResultsSubFolderPathForPrediction(PredictionTarget target)
     {
+        var predictionHash = Helper.GetAutoHashIdWithoutMultiplicity(target);
+
         var pathFragments =
             Settings.PersistedA3mDbFolderOrganizationFragmentLengths.Select(x => predictionHash.Substring(0, x));
         var subPath = Path.Join(pathFragments.ToArray());
         
-        return Path.Join(subPath, predictionHash, batchId);
+        return Path.Join(subPath, predictionHash);
     }
 
     private List<List<T>> GetBatches<T>(List<T> sourceList, int desiredBatchSize)
@@ -1319,58 +1329,141 @@ public class ColabfoldMmseqsHelper
         return result;
     }
 
-    private async Task<(List<PredictionTarget> existing, List<PredictionTarget> missing)> GetExistingAndMissingPredictionTargetsAsync(List<PredictionTarget> targetPredictions, IEnumerable<string> existingDatabaseLocations)
+    private async Task<(List<PredictionTarget> existing, List<PredictionTarget> missing)> 
+        GetExistingAndMissingPredictionTargetsAsync(List<PredictionTarget> targetPredictions, IEnumerable<string> existingDatabaseLocations)
     {
-        var expectedExtension = Settings.PersistedDbFinalA3mName;
+        var resultsLocationMappingToTest = new List<(PredictionTarget target, string subpath)>();
+        var targetToFullResultMapping = new Dictionary<PredictionTarget, string>();
 
-        List<(string expectedFilename, PredictionTarget target)> analyzedSet = targetPredictions
-            .Select(x => (Helper.GetAutoHashIdWithoutMultiplicity(x) + expectedExtension, x))
-            .ToList();
-        var existing = new List<PredictionTarget>();
+        foreach (var targetPrediction in targetPredictions)
+        {
+            resultsLocationMappingToTest.Add((targetPrediction, GetMsaResultsSubFolderPathForPrediction(targetPrediction)));
+        }
 
         // each separate database location that has actual entries inside
         foreach (var location in existingDatabaseLocations)
         {
+            if (!resultsLocationMappingToTest.Any()) goto GOTO_MARK_FINALIZE;
+
             if (!Directory.Exists(location))
             {
                 _logger.LogWarning($"Provided location does not exist: {location}");
                 continue;
             }
-
-            // they are organized in subfolders containing the first x symbols of the hash (x=2 2023-04-11 by default, defined in Settings)
-            var foldersInThisPath = await Helper.GetDirectoriesAsync(location);
-
-            foreach (var folder in foldersInThisPath)
+            
+            // TODO: parallelize this, this is many disk reads that can work together
+            foreach (var (target, subpath) in resultsLocationMappingToTest)
             {
-                if (!analyzedSet.Any()) goto GOTO_MARK_FINALIZE;
-                var filesInThisPath = (await Helper.GetFilesAsync(folder)).Where(x => x.EndsWith(expectedExtension));
-
-                foreach (var file in filesInThisPath)
+                var expectedPredictionTargetResultsPath = Path.Join(location, subpath);
+                if (!Directory.Exists(expectedPredictionTargetResultsPath)) continue;
+                
+                await foreach (var desiredResultFolder in GetResultFoldersWithDesiredResultAsync(target,
+                                   expectedPredictionTargetResultsPath))
                 {
-                    if (!analyzedSet.Any()) goto GOTO_MARK_FINALIZE;
-                    var index = analyzedSet.FindIndex(x => x.expectedFilename.Equals(Path.GetFileName(file)));
-                    var found = index >= 0;
-                    if (found)
-                    {
-                        existing.Add(analyzedSet[index].target);
-                        analyzedSet.RemoveAt(index);
-                    }
+                    var firstResult = desiredResultFolder;
+                    targetToFullResultMapping[target] = firstResult;
+                    break;
                 }
             }
+
+            var alreadyFound = targetToFullResultMapping.Select(x => x.Key).ToList();
+            resultsLocationMappingToTest.RemoveAll(x => alreadyFound.Contains(x.target));
         }
 
+        // ########################################################
         GOTO_MARK_FINALIZE:
-        var missing = analyzedSet.Select(x => x.target).ToList();
-        return (existing, missing);
+
+        var targetsWithMissingResults = resultsLocationMappingToTest.Select(x => x.target).ToList();
+        var targetsWithExistingResults = targetPredictions.Except(targetsWithMissingResults).ToList();
+
+        return (targetsWithExistingResults, targetsWithMissingResults);
     }
 
-    private async Task<(List<Protein> existing, List<Protein> missing)> Deprecated_GetExistingAndMissingSetsAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> existingDatabaseLocations, IEnumerable<string> excludeIds)
+    /// <summary>
+    /// Result location for a prediction can have multiple results in it for different combos of inputs. This will get all that fit the input target
+    /// and the settings of the current program instance
+    /// </summary>
+    /// <param name="target"></param>
+    /// <param name="fullPredictionPathToCheckForResults"></param>
+    /// <returns></returns>
+    private async IAsyncEnumerable<string> GetResultFoldersWithDesiredResultAsync(PredictionTarget target, string fullPredictionPathToCheckForResults)
     {
-        var uniqueProteins = await GetProteinTargetsForMonoDbSearchAsync(inputFastaPaths, excludeIds);
-        var dbPaths = await GetDbEntryFoldersAsync(existingDatabaseLocations.ToList());
-        var (existing, missing) = await GetExistingAndMissingSetsAsync(uniqueProteins, dbPaths);
+        var subFolders = await Helper.GetDirectoriesAsync(fullPredictionPathToCheckForResults);
+        if (!subFolders.Any()) yield break;
+        
+        foreach (var resultFolder in subFolders)
+        {
+            //if (await Helper.FilesExistParallelAsync())
 
-        return (existing, missing);
+            var expectedInfoFilePath = Path.Join(resultFolder, Settings.PersistedDbFinalA3mInfoName);
+            if (!File.Exists(expectedInfoFilePath)) continue;
+
+            var expectedMsaFilePath = Path.Join(resultFolder, Settings.PersistedDbFinalA3mName);
+            if (!File.Exists(expectedMsaFilePath)) continue;
+
+            bool isAcceptable;
+            try
+            {
+                isAcceptable = await CheckIsAcceptablePersistedA3mResultForTargetAsync(target, expectedInfoFilePath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Error while checking {expectedInfoFilePath}, skipping.");
+                continue;
+            }
+
+            if (isAcceptable) yield return resultFolder;
+
+        }
+    }
+
+    private async Task<bool> CheckIsAcceptablePersistedA3mResultForTargetAsync(PredictionTarget target, string infoFilePath)
+    {
+        var x = await ColabfoldMsaMetadataInfo.ReadFromFileSystemAsync(infoFilePath);
+        if (x is null)
+        {
+            _logger.LogInformation($"Unable to load the database info for {infoFilePath}, skipping.");
+            return false;
+        }
+        var persistedA3mInfo = x!;
+
+        if (!persistedA3mInfo.PredictionTarget.SameUniqueProteinsAs(target))
+        {
+            _logger.LogWarning($"Something is wrong with persisted a3m at location {infoFilePath}, constituents not matching expected target. This indicates hash mismatch. Database could be corrupt.");
+            return false;
+        }
+
+        if (!IsPersistedMmseqsDatabaseVersionCompatible(persistedA3mInfo.MmseqsHelperDatabaseVersion)) return false;
+        if (!Settings.Strategy.AllowDifferentMmseqsVersion &&
+            persistedA3mInfo.MmseqsVersion != Settings.MmseqsVersion) return false;
+
+        //don't think distinct works, it will probably deserialize to separate objects even if the same
+        var dbTargetsInResult = persistedA3mInfo.MsaOriginDefinitions.Select(x => x.SourceDatabaseTarget).Distinct().ToList();
+
+        var a = dbTargetsInResult;
+
+        // if any database target is not fully fitting, the result doesn't fit
+        foreach (var dbTarget in MmseqsSourceDatabaseTargets)
+        {
+            var matchingDbInPersistedResult = dbTargetsInResult.Where(x =>
+            {
+                var nameFits = x.Database.Name.Equals(dbTarget.Database.Name, StringComparison.OrdinalIgnoreCase);
+                var pairingFits = x.UseForPaired == dbTarget.UseForPaired;
+                var unpairedFits = x.UseForUnpaired == dbTarget.UseForUnpaired;
+                return nameFits && pairingFits && unpairedFits;
+            });
+
+            if (!matchingDbInPersistedResult.Any()) return false;
+        }
+
+        // if nothing made it *not* work, then it works... Dangerous way if I update stuff, but eh. This is the function that needs to be kept up to date.
+        return true;
+    }
+
+    private bool IsPersistedMmseqsDatabaseVersionCompatible(string mmseqsHelperDatabaseVersion)
+    {
+        //TODO: make this settable by strategy
+        return mmseqsHelperDatabaseVersion == Settings.ColabfoldMmseqsHelperDatabaseVersion;
     }
 
 
@@ -1380,42 +1473,42 @@ public class ColabfoldMmseqsHelper
         var proteinsInPreds = preds.SelectMany(x => x.UniqueProteins).Distinct().ToList();
         return proteinsInPreds;
 
-        var uniqueProteins = new HashSet<Protein>(new ProteinByIdComparer());
+        //var uniqueProteins = new HashSet<Protein>(new ProteinByIdComparer());
 
-        var excludedList = excludeIds.ToList();
+        //var excludedList = excludeIds.ToList();
 
-        foreach (var inputFastaPath in inputFastaPaths)
-        {
-            if (!File.Exists(inputFastaPath))
-            {
-                _logger.LogWarning($"Provided input path does not exist, will skip it: {inputFastaPath}");
-                continue;
-            }
+        //foreach (var inputFastaPath in inputFastaPaths)
+        //{
+        //    if (!File.Exists(inputFastaPath))
+        //    {
+        //        _logger.LogWarning($"Provided input path does not exist, will skip it: {inputFastaPath}");
+        //        continue;
+        //    }
 
-            await using var stream = File.OpenRead(inputFastaPath);
-            var fastas = await FastaHelper.GetFastaEntriesIfValidAsync(stream, SequenceType.Protein);
-            if (fastas is not null && fastas.Any())
-            {
-                foreach (var fastaEntry in fastas)
-                {
-                    var protein = new Protein()
-                        { Id = Helper.GetMd5Hash(fastaEntry.Sequence), Sequence = fastaEntry.Sequence };
-                    if (!excludedList.Contains(protein.Id))
-                    {
-                        uniqueProteins.Add(protein);
-                    }
-                }
-            }
-        }
+        //    await using var stream = File.OpenRead(inputFastaPath);
+        //    var fastas = await FastaHelper.GetFastaEntriesIfValidAsync(stream, SequenceType.Protein);
+        //    if (fastas is not null && fastas.Any())
+        //    {
+        //        foreach (var fastaEntry in fastas)
+        //        {
+        //            var protein = new Protein()
+        //                { Id = Helper.GetMd5Hash(fastaEntry.Sequence), Sequence = fastaEntry.Sequence };
+        //            if (!excludedList.Contains(protein.Id))
+        //            {
+        //                uniqueProteins.Add(protein);
+        //            }
+        //        }
+        //    }
+        //}
 
-        return uniqueProteins.ToList();
+        //return uniqueProteins.ToList();
 
     }
 
+    //TODO: check versions of monos too, not just final a3ms!
     private async Task<(List<Protein> existing, List<Protein> missing)> GetExistingAndMissingSetsAsync(IEnumerable<Protein> iproteins, IEnumerable<string> existingDatabaseLocations)
     {
         var proteins = new List<Protein>(iproteins);
-
         var existing = new List<Protein>();
 
         foreach (var existingDatabasePath in existingDatabaseLocations)
@@ -1432,18 +1525,12 @@ public class ColabfoldMmseqsHelper
             proteins = proteins.Except(existing).ToList();
         }
 
-
         var missing = proteins.Except(existing).ToList();
 
         return (existing, missing);
     }
 
-    private List<List<PredictionTarget>> GetPredictionTargetBatches(List<PredictionTarget> predictionTargets)
-    {
-        return GetBatches<PredictionTarget>(predictionTargets,
-            Settings.MaxDesiredPredictionTargetBatchSize);
-    }
-
+    
     /// <summary>
     /// Will load up targets from the source fasta files, make it so that same prot sequences refer to same Protein instances, and remove any duplicate target.
     /// Within each target, the ordering will be clearly defined based on constituents, sorted first by sequence length then lexically

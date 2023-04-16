@@ -2,9 +2,9 @@
 
 public class MmseqsSourceDatabaseTarget
 {
-    public MmseqsSourceDatabaseTarget(MmseqsSourceDatabase db, bool useForUnpaired, bool useForPaired)
+    public MmseqsSourceDatabaseTarget(MmseqsSourceDatabase database, bool useForUnpaired, bool useForPaired)
     {
-        Database = db;
+        Database = database;
         UseForUnpaired = useForUnpaired;
         UseForPaired = useForPaired;
     }

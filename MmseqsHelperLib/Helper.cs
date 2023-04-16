@@ -125,7 +125,7 @@ public static partial class Helper
             .OrderByDescending(x=>x.protein.Sequence.Length)
             .ThenBy(x=>x.protein.Sequence).ToList();
 
-        var result = new PredictionTarget() {UserProvidedId = predictionTarget.UserProvidedId};
+        var result = new PredictionTarget(userProvidedId: predictionTarget.UserProvidedId);
 
         sorted.ForEach(x=> result.AppendProtein(x.protein, x.multiplicity));
         
@@ -151,5 +151,34 @@ public static partial class Helper
     public static async Task CreateDirectoryAsync(string directory)
     {
         await Task.Run(() => Directory.CreateDirectory(directory));
+    }
+
+    public static string GetMultimerName(PredictionTarget pt)
+    {
+        try
+        {
+            var number = pt.UniqueProteins.Count;
+            switch (number)
+            {
+                case 1: return "monomer";
+                case 2: return "dimer";
+                case 3: return "trimer";
+                case 4: return "tetramer";
+                case 5: return "pentamer";
+                case 6: return "hexamer";
+                case 7: return "heptamer";
+                case 8: return "monomer";
+                case 9: return "9-mer";
+                case 10: return "decamer";
+                case 11: return "11-mer";
+                case 12: return "dodecamer";
+                default: return $"{number}-mer";
+            }
+        }
+        catch (Exception ex)
+        {
+            return string.Empty;
+        }
+
     }
 }

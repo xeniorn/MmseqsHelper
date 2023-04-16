@@ -18,7 +18,7 @@ internal sealed class MmseqsHelperService
 
     public async Task ExecuteAsync(MmseqsHelperMode mode)
     {
-        Strategy = new CalculationStrategy() {SuspiciousData = SuspiciousDataStrategy.PlaySafe};
+        Strategy = new CalculationStrategy() {SuspiciousData = SuspiciousDataStrategy.PlaySafe, AllowDifferentMmseqsVersion = true};
 
         _logger.LogInformation($"Running mmseqs helper, mode: {mode}");
 

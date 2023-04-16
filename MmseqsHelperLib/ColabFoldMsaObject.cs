@@ -12,18 +12,17 @@ public class ColabFoldMsaObject
     {
         DataEntries = dataEntries;
         PredictionTarget = predictionTarget;
-        HashId = Helper.GetAutoHashIdWithoutMultiplicity(PredictionTarget);
     }
 
-    public List<AnnotatedMsaData> DataEntries { get; set; }
-    public string HashId { get; }
-
+    public List<AnnotatedMsaData> DataEntries { get; set; } = new ();
     public PredictionTarget PredictionTarget { get; }
     private ColabfoldMsaMetadataInfo Metadata { get; set; }
     
     public async Task WriteToFileSystemAsync(AutoColabfoldMmseqsSettings settings, string targetFolder)
     {
-        Metadata = new ColabfoldMsaMetadataInfo() { PredictionTarget = PredictionTarget, CreateTime = DateTime.Now, MmseqsHelperVersion = settings.ColabfoldMmseqsHelperVersion};
+        Metadata = new ColabfoldMsaMetadataInfo(predictionTarget: PredictionTarget, createTime: DateTime.Now,
+            mmseqsHelperDatabaseVersion: settings.ColabfoldMmseqsHelperDatabaseVersion,
+            mmseqsVersion: settings.MmseqsVersion);
 
         var fullMsaPath = Path.Join(targetFolder, settings.PersistedDbFinalA3mName);
         var fullInfoPath = Path.Join(targetFolder, settings.PersistedDbFinalA3mInfoName);
@@ -43,6 +42,8 @@ public class ColabFoldMsaObject
     }
     private IEnumerable<string> GetPairedLines(Dictionary<Protein, byte[]> pairedData)
     {
+        if (!pairedData.Any()) yield break;
+
         var proteinToPairedLineList = new List<(Protein protein, string[] a3mLines)>();
         foreach (var (protein, bytes) in pairedData)
         {
@@ -87,7 +88,7 @@ public class ColabFoldMsaObject
             var startLine = nextAvailableLine;
             var endLine = nextAvailableLine + pairLines.Count - 1;
             var isEmpty = !pairLines.Any();
-            Metadata.MsaOriginDefinitions.Add(new MsaOriginDefinition(startLine, endLine, entry.SourceDatabaseTarget,
+            Metadata.MsaOriginDefinitions.Add(new MsaOriginDefinition(startLine, endLine, entry.SourceDatabaseTarget, 
                 true, isEmpty));
             lines.AddRange(pairLines);
         }
