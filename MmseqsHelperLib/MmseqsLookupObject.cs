@@ -13,9 +13,9 @@ public class MmseqsLookupObject
         
     public async Task WriteToFileSystemAsync(MmseqsSettings settings, string dbPath)
     {
-        var separator = settings.Mmseqs2Internal_LookupIntraEntryColumnSeparator;
+        var separator = settings.Mmseqs2Internal.LookupIntraEntryColumnSeparator;
             
-        var lookupPath = $"{dbPath}{settings.Mmseqs2Internal_DbLookupSuffix}";
+        var lookupPath = $"{dbPath}{settings.Mmseqs2Internal.DbLookupSuffix}";
 
         // 2023-04-09 DAMN no. needs a terminal newline at each line, not just between entries. Disaster.
         //var lines = Entries.Select(x =>
@@ -27,7 +27,7 @@ public class MmseqsLookupObject
                 x.Value.EntryIndex, 
                 x.Value.ReferenceName, 
                 x.Value.PairingGroup) 
-            + settings.Mmseqs2Internal_LookupEntryTerminator);
+            + settings.Mmseqs2Internal.LookupEntryTerminator);
         var data = Encoding.ASCII.GetBytes(string.Join("", lines));
 
         await File.WriteAllBytesAsync(lookupPath, data);

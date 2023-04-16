@@ -1,7 +1,35 @@
 {
   "Test": {
-    "Layer": {
-      "Three": "value"
-    }
-  }
+    
+	
+	
+	"Layer": {"Three": "value"}
+
+
+
+
+
+  },
+  
+  
+  
+  "MmseqsInternal": 
+{
+  "DbHeaderSuffix": "_h",
+  "DbDataSuffix": "",
+  "DbIndexSuffix": ".index",
+  "DbLookupSuffix": ".loooookup",
+  "DbTypeSuffix": ".dbtype",
+  "SourceDatabaseSequenceSuffix": "_seq",
+  "SourceDatabaseAlignmentSuffix": "_aln",
+  "PrecalculatedIndexSuffix": ".idx",
+  "DataEntryTerminator": "\u0000",
+  "IndexEntryTerminator": "\n",
+  "LookupEntryTerminator": "\n",
+  "HeaderEntryHardcodedSuffix": "\n",
+  "SequenceEntryHardcodedSuffix": "\n",
+  "IndexIntraEntryColumnSeparator": "\t",
+  "LookupIntraEntryColumnSeparator": "\t"
+}
+  
 }

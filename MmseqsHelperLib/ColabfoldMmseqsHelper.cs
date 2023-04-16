@@ -245,7 +245,7 @@ public class ColabfoldMmseqsHelper
                                 throw new Exception("This should never happen.");
                         }
 
-                        var requiredDbFileName = $"{requiredDbName}{Mmseqs.Settings.Mmseqs2Internal_DbTypeSuffix}";
+                        var requiredDbFileName = $"{requiredDbName}{Mmseqs.Settings.Mmseqs2Internal.DbTypeSuffix}";
 
                         var files = await Helper.GetFilesAsync(subPath);
                         if (files.Any(x => Path.GetFileName(x) == requiredDbFileName))
@@ -334,8 +334,8 @@ public class ColabfoldMmseqsHelper
         await Helper.CreateDirectoryAsync(localProcessingPath);
         var targetDbPathBase = refDbTarget.Database.Path;
 
-        var targetDbPathSeq = targetDbPathBase + Mmseqs.Settings.Mmseqs2Internal_ExpectedSeqDbSuffix;
-        var targetDbPathAln = targetDbPathBase + Mmseqs.Settings.Mmseqs2Internal_ExpectedAlnDbSuffix;
+        var targetDbPathSeq = targetDbPathBase + Mmseqs.Settings.ExpectedSeqDbSuffix;
+        var targetDbPathAln = targetDbPathBase + Mmseqs.Settings.ExpectedAlnDbSuffix;
 
         //*******************************************expand*******************************************************
         var expandResultDb = Path.Join(localProcessingPath, $"expand");
@@ -390,8 +390,8 @@ public class ColabfoldMmseqsHelper
         var localProcessingPath = Path.Join(workingDir, dbTarget.Database.Name, "mono");
         await Helper.CreateDirectoryAsync(localProcessingPath);
         var targetDbPathBase = dbTarget.Database.Path;
-        var targetDbPathSeq = targetDbPathBase + Mmseqs.Settings.Mmseqs2Internal_ExpectedSeqDbSuffix;
-        var targetDbPathAln = targetDbPathBase + Mmseqs.Settings.Mmseqs2Internal_ExpectedAlnDbSuffix;
+        var targetDbPathSeq = targetDbPathBase + Mmseqs.Settings.ExpectedSeqDbSuffix;
+        var targetDbPathAln = targetDbPathBase + Mmseqs.Settings.ExpectedAlnDbSuffix;
 
         //*******************************************search*******************************************************
         var tempSubfolderForSearch = Path.Join(localProcessingPath, "tmp");
@@ -702,7 +702,7 @@ public class ColabfoldMmseqsHelper
                 var alignDbObject = GenerateDbObjectForPredictionBatch(predictionsForPairing, monoToAlignFragmentMappings, locator, dataType);
 
                 var pairedAlignDb = Path.Join(localPath, "align1");
-                var alignDbDataDbPath = $"{pairedAlignDb}{Mmseqs.Settings.Mmseqs2Internal_DbDataSuffix}";
+                var alignDbDataDbPath = $"{pairedAlignDb}{Mmseqs.Settings.Mmseqs2Internal.DbDataSuffix}";
 
                 writeTasks.Add(alignDbObject.WriteToFileSystemAsync(Mmseqs.Settings, alignDbDataDbPath));
                 locator.PrePairingAlignDbPathMapping.Add(dbTarget, pairedAlignDb);
@@ -716,7 +716,7 @@ public class ColabfoldMmseqsHelper
                 var unpairedA3mDbObject = GenerateDbObjectForPredictionBatch(predictionsToExtractDataFor, monoToUnpairedA3mFragmentMappings, locator, dataType);
 
                 var unpairedA3mDb = Path.Join(localPath, "unpaired_a3m");
-                var unpairedA3mDbDataDbPath = $"{unpairedA3mDb}{Mmseqs.Settings.Mmseqs2Internal_DbDataSuffix}";
+                var unpairedA3mDbDataDbPath = $"{unpairedA3mDb}{Mmseqs.Settings.Mmseqs2Internal.DbDataSuffix}";
 
                 writeTasks.Add(unpairedA3mDbObject.WriteToFileSystemAsync(Mmseqs.Settings, unpairedA3mDbDataDbPath));
                 locator.UnPairedA3mDbPathMapping.Add(dbTarget, unpairedA3mDb);
@@ -870,7 +870,7 @@ public class ColabfoldMmseqsHelper
                                 throw new Exception("This should never happen.");
                         }
 
-                        var requiredDbFileName = $"{requiredDbName}{Mmseqs.Settings.Mmseqs2Internal_DbTypeSuffix}";
+                        var requiredDbFileName = $"{requiredDbName}{Mmseqs.Settings.Mmseqs2Internal.DbTypeSuffix}";
 
                         var files = await Helper.GetFilesAsync(subPath);
                         if (files.Any(x => Path.GetFileName(x) == requiredDbFileName))
@@ -1088,8 +1088,8 @@ public class ColabfoldMmseqsHelper
         var localProcessingPath = Path.Join(workingDir, dbTarget.Database.Name, "pair");
         await Helper.CreateDirectoryAsync(localProcessingPath);
         var targetDbPathBase = dbTarget.Database.Path;
-        var targetDbPathSeq = targetDbPathBase + Mmseqs.Settings.Mmseqs2Internal_ExpectedSeqDbSuffix;
-        var targetDbPathAln = targetDbPathBase + Mmseqs.Settings.Mmseqs2Internal_ExpectedAlnDbSuffix;
+        var targetDbPathSeq = targetDbPathBase + Mmseqs.Settings.ExpectedSeqDbSuffix;
+        var targetDbPathAln = targetDbPathBase + Mmseqs.Settings.ExpectedAlnDbSuffix;
 
         //*******************************************expand*******************************************************
         var expandResultDb = Path.Join(localProcessingPath, $"expand");
@@ -1121,7 +1121,7 @@ public class ColabfoldMmseqsHelper
     private async Task<string> PerformPairingForDbTargetAsync(string workingDir, string qdbPath, string pairedAlignDb, MmseqsSourceDatabaseTarget dbTarget)
     {
         var targetDbPathBase = dbTarget.Database.Path;
-        var targetDbPathSeq = targetDbPathBase + Mmseqs.Settings.Mmseqs2Internal_ExpectedSeqDbSuffix;
+        var targetDbPathSeq = targetDbPathBase + Mmseqs.Settings.ExpectedSeqDbSuffix;
 
         var localProcessingPath = Path.Join(workingDir, dbTarget.Database.Name, "pairing");
         await Helper.CreateDirectoryAsync(localProcessingPath);
@@ -1212,8 +1212,8 @@ public class ColabfoldMmseqsHelper
         await Mmseqs.RunMmseqsAsync(Mmseqs.moveModule, movePosParams, String.Empty);
 
         //***link to header db of qdb since it has the same values***
-        var (success, path) = await Mmseqs.RunLinkDbAsync(qdbPath + Mmseqs.Settings.Mmseqs2Internal_DbHeaderSuffix,
-            profileResultDb + Mmseqs.Settings.Mmseqs2Internal_DbHeaderSuffix);
+        var (success, path) = await Mmseqs.RunLinkDbAsync(qdbPath + Mmseqs.Settings.Mmseqs2Internal.DbHeaderSuffix,
+            profileResultDb + Mmseqs.Settings.Mmseqs2Internal.DbHeaderSuffix);
 
         if (!success)
         {
@@ -1548,7 +1548,7 @@ public class ColabfoldMmseqsHelper
 
             //TODO: many checks - whether the sequence matches, whether the other stuff apart from qdb exists, ...
             var qdbHeaderDb = Path.Join(existingDatabasePath, Settings.PersistedDbQdbName) +
-                              $"{Mmseqs.Settings.Mmseqs2Internal_DbHeaderSuffix}";
+                              $"{Mmseqs.Settings.Mmseqs2Internal.DbHeaderSuffix}";
 
             var headers = await Mmseqs.GetAllHeadersInSequenceDbHeaderDbAsync(qdbHeaderDb);
             var contained = proteins.Where(x => headers.Contains(Helper.GetMd5Hash(x.Sequence))).ToList();

@@ -43,12 +43,12 @@ public class MmseqsDatabaseObject
         var aggregateOffset = 0;
 
         byte[] separator;
-        separator = Encoding.ASCII.GetBytes(settings.Mmseqs2Internal_DataEntryTerminator);
+        separator = Encoding.ASCII.GetBytes(settings.Mmseqs2Internal.DataEntryTerminator);
 
         switch (DatabaseType)
         {
             case MmseqsDatabaseType.Header_GENERIC_DB:
-                dbPath = $"{dbPath}{settings.Mmseqs2Internal_DbHeaderSuffix}";
+                dbPath = $"{dbPath}{settings.Mmseqs2Internal.DbHeaderSuffix}";
                 break;
             case MmseqsDatabaseType.Sequence_AMINO_ACIDS:
             case MmseqsDatabaseType.Sequence_NUCLEOTIDES:
@@ -59,9 +59,9 @@ public class MmseqsDatabaseObject
                 throw new NotImplementedException();
         }
 
-        var dataDbPath = $"{dbPath}{settings.Mmseqs2Internal_DbDataSuffix}";
-        var indexDbPath = $"{dbPath}{settings.Mmseqs2Internal_DbIndexSuffix}";
-        var dbTypePath = $"{dbPath}{settings.Mmseqs2Internal_DbTypeSuffix}";
+        var dataDbPath = $"{dbPath}{settings.Mmseqs2Internal.DbDataSuffix}";
+        var indexDbPath = $"{dbPath}{settings.Mmseqs2Internal.DbIndexSuffix}";
+        var dbTypePath = $"{dbPath}{settings.Mmseqs2Internal.DbTypeSuffix}";
 
         var dataFragments = Entries.Values.ToList();
         var totalDataLength = dataFragments.Select(x => (long)(x.Length + separator.Length)).Sum();
@@ -82,7 +82,7 @@ public class MmseqsDatabaseObject
         // on the other hand I'm avoiding ever creating a large single object, which is important because db sizes can be larger than largest possible byte[] in CLR (int32.maxvalue)
         foreach (var (index, data) in Entries)
         {
-            var entryDataLength = data.Length + settings.Mmseqs2Internal_DataEntryTerminator.Length;
+            var entryDataLength = data.Length + settings.Mmseqs2Internal.DataEntryTerminator.Length;
             var indexFragment = new MmseqsIndexEntry(index, aggregateOffset, entryDataLength);
             aggregateOffset += entryDataLength;
 
@@ -128,12 +128,12 @@ public class MmseqsDatabaseObject
 
     private byte[] GenerateMmseqsIndexEntryBytes(MmseqsIndexEntry mmseqsIndexEntry, MmseqsSettings settings)
     {
-        var separator = settings.Mmseqs2Internal_IndexIntraEntryColumnSeparator;
+        var separator = settings.Mmseqs2Internal.IndexIntraEntryColumnSeparator;
         var resultString = string.Join(separator, 
             mmseqsIndexEntry.Index, 
             mmseqsIndexEntry.StartOffset,
             mmseqsIndexEntry.Length)
-            + settings.Mmseqs2Internal_IndexEntryTerminator;
+            + settings.Mmseqs2Internal.IndexEntryTerminator;
         return Encoding.ASCII.GetBytes(resultString);
     }
 }

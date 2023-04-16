@@ -90,6 +90,13 @@ internal sealed class MmseqsHelperService
 
     private MmseqsSettings GetMmseqsSettings(IConfiguration configuration)
     {
+        // doesn't work, would have to be made mutable... don't want that
+        // TODO: jsondeserialize instead?
+        var intSet = new MmseqsInternalConfigurationSettings();
+        configuration.GetSection(MmseqsInternalConfigurationSettings.ConfigurationName).Bind(intSet);
+
+
+
         var settings = new MmseqsSettings();
 
         settings.MmseqsBinaryPath = configuration["MmseqsBinaryPath"]; //?? "/path/to/binary/mmseqs";
@@ -97,7 +104,7 @@ internal sealed class MmseqsHelperService
         
         if (int.TryParse(configuration["ThreadsPerMmseqsProcess"], out var parsedThreadCount))
         {
-            settings.ThreadCount = parsedThreadCount;
+            settings.ThreadsPerProcess = parsedThreadCount;
         }
         else
         {
@@ -116,6 +123,16 @@ internal sealed class MmseqsHelperService
             if (Strategy.SuspiciousData == SuspiciousDataStrategy.PlaySafe) throw new ArgumentException();
         }
         
+        if (Helper.TryParseBool(configuration["UsePrecalculatedIndex"], out var parsedPrecalcualtedIndex))
+        {
+            settings.UsePrecalculatedIndex = parsedPrecalcualtedIndex;
+        }
+        else
+        {
+            _logger.LogError($"Failed to parse UsePrecalculatedIndex, value should be a bool, was ({configuration["UsePrecalculatedIndex"]})");
+            if (Strategy.SuspiciousData == SuspiciousDataStrategy.PlaySafe) throw new ArgumentException();
+        }
+
 
         return settings;
     }

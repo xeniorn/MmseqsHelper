@@ -21,7 +21,8 @@ internal class MmseqsHelperModeGenerateMonoDbs : MmseqsHelperMode
             { "TempPath", ("./tmp/", false)},
             { "ExclusionFilePath",(String.Empty,false)},
             {"ThreadsPerMmseqsProcess", ("1",false) },
-            {"PreLoadDb", ("0",false)}
+            {"PreLoadDb", ("false",false)},
+            {"UsePrecalculatedIndex",("true",false)}
         };
     }
 

@@ -21,7 +21,7 @@ namespace MmseqsHelperLib
 
         public static MmseqsSettings GetDefaultSettings() => new MmseqsSettings();
 
-        public string PerformanceParams => @$"--threads {Settings.ThreadCount} --db-load-mode {(Settings.PreLoadDb ? 2 : 0)}";
+        public string PerformanceParams => @$"--threads {Settings.ThreadsPerProcess} --db-load-mode {(Settings.PreLoadDb ? 2 : 0)}";
 
         public MmseqsHelper(MmseqsSettings? inputSettings, ILogger logger)
         {
@@ -243,17 +243,17 @@ namespace MmseqsHelperLib
         {
             var result = new List<(byte[] data, int index)>();
 
-            var dbIndexFile = $"{dataDbPath}{Settings.Mmseqs2Internal_DbIndexSuffix}";
+            var dbIndexFile = $"{dataDbPath}{Settings.Mmseqs2Internal.DbIndexSuffix}";
             var entries = await GetAllIndexFileEntriesInDbAsync(dbIndexFile);
             
-            var emptyEntryLength = Settings.Mmseqs2Internal_DataEntryTerminator.Length;
+            var emptyEntryLength = Settings.Mmseqs2Internal.DataEntryTerminator.Length;
             var orderedEntriesToRead = entries
                 .Where(x => 
                     indices.Contains(x.Index) 
                     && x.Length > emptyEntryLength)
                 .OrderBy(x => x.StartOffset).ToList();
 
-            var dbDataFile = $"{dataDbPath}{Settings.Mmseqs2Internal_DbDataSuffix}";
+            var dbDataFile = $"{dataDbPath}{Settings.Mmseqs2Internal.DbDataSuffix}";
 
             using BinaryReader reader = new BinaryReader(new FileStream(dbDataFile, FileMode.Open));
             foreach (var (index, startOffset, length) in orderedEntriesToRead)
@@ -265,7 +265,7 @@ namespace MmseqsHelperLib
                 }
                 
                 reader.BaseStream.Position = startOffset;
-                var lengthToRead = length - Settings.Mmseqs2Internal_DataEntryTerminator.Length;
+                var lengthToRead = length - Settings.Mmseqs2Internal.DataEntryTerminator.Length;
                 var data = reader.ReadBytes(lengthToRead);
                 result.Add((data, index));
             }
@@ -279,7 +279,7 @@ namespace MmseqsHelperLib
             GetHeaderAndIndicesForGivenHeadersInSequenceDbAsync(string sequenceDbPath, List<string> headersToSearch)
         {
             // will always grab just the first found index when there are duplicates
-            var headerFile = $"{sequenceDbPath}{Settings.Mmseqs2Internal_DbHeaderSuffix}";
+            var headerFile = $"{sequenceDbPath}{Settings.Mmseqs2Internal.DbHeaderSuffix}";
             var headersInFile = await GetAllHeadersInSequenceDbHeaderDbAsync(headerFile);
             var headerToFakeIndexEntryMapping = new Dictionary<string, List<MmseqsIndexEntry>>();
 
@@ -289,8 +289,8 @@ namespace MmseqsHelperLib
             foreach (var header in headersInFile)
             {
                 var expectedEntryLength = header.Length 
-                                  + Settings.Mmseqs2Internal_HeaderEntryHardcodedSuffix.Length 
-                                  + Settings.Mmseqs2Internal_DataEntryTerminator.Length;
+                                  + Settings.Mmseqs2Internal.HeaderEntryHardcodedSuffix.Length 
+                                  + Settings.Mmseqs2Internal.DataEntryTerminator.Length;
                 if (uniqueHeaders.Contains(header))
                 {
                     if (!headerToFakeIndexEntryMapping.ContainsKey(header))
@@ -304,7 +304,7 @@ namespace MmseqsHelperLib
                 startOffset += expectedEntryLength;
             }
 
-            var headerIndexFile = $"{sequenceDbPath}{Settings.Mmseqs2Internal_DbHeaderSuffix}{Settings.Mmseqs2Internal_DbIndexSuffix}";
+            var headerIndexFile = $"{sequenceDbPath}{Settings.Mmseqs2Internal.DbHeaderSuffix}{Settings.Mmseqs2Internal.DbIndexSuffix}";
             var headerIndexEntries = await GetAllIndexFileEntriesInDbAsync(headerIndexFile);
 
             var result = new List<(string header, List<int> indices)>();
@@ -338,15 +338,15 @@ namespace MmseqsHelperLib
             var allLines = await File.ReadAllLinesAsync(mmseqsDbIndexFile);
             return allLines.Select(x =>
             {
-                var entries = Helper.RemoveSuffix(x, Settings.Mmseqs2Internal_IndexEntryTerminator)
-                    .Split(Settings.Mmseqs2Internal_IndexIntraEntryColumnSeparator);
+                var entries = Helper.RemoveSuffix(x, Settings.Mmseqs2Internal.IndexEntryTerminator)
+                    .Split(Settings.Mmseqs2Internal.IndexIntraEntryColumnSeparator);
                 return new MmseqsIndexEntry(int.Parse(entries[0]), long.Parse(entries[1]), int.Parse(entries[2]));
             }).ToList();
         }
 
         public async Task<List<string>> GetIdsFoundInSequenceDbAsync(string dbPath, IEnumerable<string> idsToSearch)
         {
-            var headerFile = $"{dbPath}{Settings.Mmseqs2Internal_DbHeaderSuffix}";
+            var headerFile = $"{dbPath}{Settings.Mmseqs2Internal.DbHeaderSuffix}";
             var headersInFile = await GetAllHeadersInSequenceDbHeaderDbAsync(headerFile);
             return idsToSearch.Where(x => headersInFile.Contains(x)).ToList();
 
@@ -358,11 +358,11 @@ namespace MmseqsHelperLib
             var allText = await File.ReadAllTextAsync(headerDbFile);
             
             // each entry is terminated by ascii null character for all mmseqs dbs
-            var lines = allText.Split(Settings.Mmseqs2Internal_DataEntryTerminator);
+            var lines = allText.Split(Settings.Mmseqs2Internal.DataEntryTerminator);
 
             // in header db, headers are by convention written out with a terminating newline
             var headers = lines.Select(x => 
-                    Helper.RemoveSuffix(x, Settings.Mmseqs2Internal_HeaderEntryHardcodedSuffix))
+                    Helper.RemoveSuffix(x, Settings.Mmseqs2Internal.HeaderEntryHardcodedSuffix))
                 .ToList();
 
             return headers;
