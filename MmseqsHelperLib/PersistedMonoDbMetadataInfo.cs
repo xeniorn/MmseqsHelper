@@ -11,7 +11,10 @@ internal class PersistedMonoDbMetadataInfo
     private static JsonSerializerOptions _jsonSerializerOptions = new()
     {
         IgnoreReadOnlyFields = true,
-        IgnoreReadOnlyProperties = true,
+        // need to leave this at false because otherwise the DatabaseTarget (a record) doesn't export the Database...
+        // Could handle it separately, but I don't know where else it will be an issue. Safer to keep it.
+        // It doesn't hurt anything except clutter.
+        IgnoreReadOnlyProperties = false,
         PropertyNameCaseInsensitive = true,
         AllowTrailingCommas = true,
         WriteIndented = true
@@ -37,7 +40,7 @@ internal class PersistedMonoDbMetadataInfo
     public async Task WriteToFileSystemAsync(string fullInfoPath)
     {
         await using var stream = File.Create(fullInfoPath);
-        await System.Text.Json.JsonSerializer.SerializeAsync<PersistedMonoDbMetadataInfo>(stream, this, _jsonSerializerOptions);
+        await JsonSerializer.SerializeAsync<PersistedMonoDbMetadataInfo>(stream, this, _jsonSerializerOptions);
     }
 
 }

@@ -28,6 +28,7 @@ public class ColabfoldMmseqsHelper
         var uniprotDb = new MmseqsSourceDatabase(uniprotDbName, uniprotDbPath, new MmseqsSourceDatabaseFeatures(HasTaxonomyData: true));
         var envDb = new MmseqsSourceDatabase(envDbName, envDbPath, new MmseqsSourceDatabaseFeatures(HasTaxonomyData:false));
 
+        //TODO: definitely move this to external config asap. we can't be initializing stuff hardcoded
         ReferenceSourceDatabaseTarget = new MmseqsSourceDatabaseTarget(uniprotDb, true, true);
         var envDbTarget = new MmseqsSourceDatabaseTarget(envDb, true, false);
 
@@ -772,6 +773,14 @@ public class ColabfoldMmseqsHelper
         return mmseqsDbObject;
     }
 
+    /// <summary>
+    /// Contains original data for each protein target, doesn't strip anything except the data terminator \0
+    /// </summary>
+    /// <param name="targetDb"></param>
+    /// <param name="featuresCollection"></param>
+    /// <param name="dataType"></param>
+    /// <param name="persistedDbLocationBatchSize"></param>
+    /// <returns></returns>
     private async Task<Dictionary<Protein, byte[]>> GenerateDataDbFragmentsForSourceDatabaseAsync(
         MmseqsSourceDatabase targetDb, 
         List<MmseqsPersistedMonoDbEntryFeature> featuresCollection,
@@ -792,6 +801,19 @@ public class ColabfoldMmseqsHelper
             // the monoToAlignFragmentMappings dict gets mutated each round
             await AppendFragmentDictionaryForSearchBatchAsync(monoToDataFragmentMappings, searchBatch, relevantFeatures, dataType);
         }
+
+        // need to include the empty entries for ones not found (it happens sometimes that after filter or whatever has no results,
+        // and this reconstruction is mimicking that normal behavior
+        var relevantMonos = relevantFeatures.Select(x => x.Mono);
+        foreach (var relevantMono in relevantMonos)
+        {
+            var hasNoResults = !monoToDataFragmentMappings.ContainsKey(relevantMono);
+            if (hasNoResults)
+            {
+                monoToDataFragmentMappings.Add(relevantMono, Array.Empty<byte>());
+            }
+        }
+
         return monoToDataFragmentMappings;
     }
 
@@ -874,6 +896,8 @@ public class ColabfoldMmseqsHelper
     /// Append the mutable dictionary by all the data fragments for relevant features. Will read e.g. 20 persisted mono db locations at once for presence of
     /// (for_pair_align or unpaired) data, depending on input, that belongs to the target source database (read from features?).
     /// ... fragile, hard to understand. Needs to be rewritten.
+    ///
+    /// Appends data as-is, removing just the data terminator (null ascii), doesn't do anything further regarding newlines etc
     /// </summary>
     /// <param name="mutableMonoToDataFragmentMapping"></param>
     /// <param name="dbLocationsToProcess"></param>
@@ -996,7 +1020,14 @@ public class ColabfoldMmseqsHelper
         return mmseqsQueryDatabase;
     }
 
-    private async Task<Dictionary<Protein, List<(string dbLocation, List<int> qdbIndices)>>> GetMonoToDbAndIndexMappingsForSearchBatch(List<string> dbLocationsToSearch, List<Protein> proteins)
+    /// <summary>
+    /// Input protein list expected to be unique
+    /// </summary>
+    /// <param name="dbLocationsToSearch"></param>
+    /// <param name="uniqueProteins"></param>
+    /// <returns></returns>
+    private async Task<Dictionary<Protein, List<(string dbLocation, List<int> qdbIndices)>>> 
+        GetMonoToDbAndIndexMappingsForSearchBatch(List<string> dbLocationsToSearch, List<Protein> uniqueProteins)
     {
         var res = new Dictionary<Protein, List<(string dbLocation, List<int> qdbIndices)>>();
         
@@ -1005,7 +1036,7 @@ public class ColabfoldMmseqsHelper
         {
             // queue up tasks for now don't await one by one
             var qdbPath = Path.Join(dbLocation, Settings.PersistedDbQdbName);
-            var headersToSearch = proteins.Select(x => x.Id).ToList();
+            var headersToSearch = uniqueProteins.Select(x => x.Id).ToList();
             resultTasksMapping.Add((dbLocation, Mmseqs.GetHeaderAndIndicesForGivenHeadersInSequenceDbAsync(qdbPath, headersToSearch)));
         }
 
@@ -1017,7 +1048,7 @@ public class ColabfoldMmseqsHelper
             foreach (var (id, indices) in entriesInDb)
             {
                 if (!indices.Any()) continue;
-                var protein = proteins.Single(x => x.Id == id);
+                var protein = uniqueProteins.Single(x => x.Id == id);
                 if (!res.ContainsKey(protein))
                 {
                     res.Add(protein, new List<(string dbLocation, List<int> qdbIndices)>());

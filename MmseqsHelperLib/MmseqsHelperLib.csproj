@@ -12,7 +12,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AlphafoldPredictionLib\AlphafoldPredictionLib.csproj" />
-    <ProjectReference Include="..\FastaHelperLib\FastaHelperLib.csproj" />
   </ItemGroup>
 
 </Project>

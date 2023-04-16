@@ -87,9 +87,17 @@ public class ColabFoldMsaObject
             
             var startLine = nextAvailableLine;
             var endLine = nextAvailableLine + pairLines.Count - 1;
+            
             var isEmpty = !pairLines.Any();
-            Metadata.MsaOriginDefinitions.Add(new MsaOriginDefinition(startLine, endLine, entry.SourceDatabaseTarget, 
-                true, isEmpty));
+            if (!isEmpty)
+            {
+                Metadata.MsaOriginDefinitions.Add(new MsaOriginDefinition(startLine, endLine, entry.SourceDatabaseTarget, true, false));
+            }
+            else
+            {
+                Metadata.MsaOriginDefinitions.Add(new MsaOriginDefinition(-1, -1, entry.SourceDatabaseTarget, true, true));
+            }
+            
             lines.AddRange(pairLines);
         }
 
@@ -100,9 +108,17 @@ public class ColabFoldMsaObject
 
             var startLine = nextAvailableLine;
             var endLine = nextAvailableLine + unpairedLines.Count - 1;
+            
             var isEmpty = !unpairedLines.Any();
-            Metadata.MsaOriginDefinitions.Add(new MsaOriginDefinition(startLine, endLine, entry.SourceDatabaseTarget,
-                false, isEmpty));
+            if (!isEmpty)
+            {
+                Metadata.MsaOriginDefinitions.Add(new MsaOriginDefinition(startLine, endLine, entry.SourceDatabaseTarget, false, false));
+            }
+            else
+            {
+                Metadata.MsaOriginDefinitions.Add(new MsaOriginDefinition(-1, -1, entry.SourceDatabaseTarget, false, true));
+            }
+
             lines.AddRange(unpairedLines);
         }
         

@@ -2,6 +2,7 @@
 
 public class MmseqsSettings
 {
+    
     public bool PreLoadDb { get; set; } = false;
 
     public string Mmseqs2Internal_DbHeaderSuffix { get; init; } = @"_h";
@@ -12,14 +13,27 @@ public class MmseqsSettings
     public string Mmseqs2Internal_ExpectedSeqDbSuffix => PreLoadDb ? ".idx" : "_seq";
     public string Mmseqs2Internal_ExpectedAlnDbSuffix => PreLoadDb ? ".idx" : "_aln";
 
-    // manual says only \0 is the separator, but they always use newlines too, and terminal newline does not seem to be a part of the entry... so use it like this for now
-    // it all really breaks apart when this stuff isn't exact. All entries must be \n terminated for realz.
-    public string Mmseqs2Internal_DataEntrySeparator { get; init; } = "\n\0";
-    public string Mmseqs2Internal_IndexColumnSeparator { get; init; } = "\t";
-    public string Mmseqs2Internal_LookupColumnSeparator { get; init; } = "\t";
+    // manual says only \0 is the separator and zero-length entries indeed don't have a newline
+    public string Mmseqs2Internal_DataEntryTerminator { get; init; } = "\0";
+    // newlines separate each index entry
     public string Mmseqs2Internal_IndexEntryTerminator { get; init; } = "\n";
+    // newlines separate each lookup entry
     public string Mmseqs2Internal_LookupEntryTerminator { get; init; } = "\n";
-    
+    // headers and sequences have hardcoded newlines as a suffix
+    public string Mmseqs2Internal_HeaderEntryHardcodedSuffix { get; init; } = "\n";
+    // headers and sequences have hardcoded newlines as a suffix
+    public string Mmseqs2Internal_SequenceEntryHardcodedSuffix { get; init; } = "\n";
+
+    // within each entry, tabs are used, e.g.
+    // 0    0   15
+    // 1    15  15
+    public string Mmseqs2Internal_IndexIntraEntryColumnSeparator { get; init; } = "\t";
+
+    // within each entry, tabs are used, e.g.
+    // 0    headerX    0
+    // 1    headerX    0
+    public string Mmseqs2Internal_LookupIntraEntryColumnSeparator { get; init; } = "\t";
+
     public string TempPath { get; set; } = Path.GetTempPath();
 
     public string MmseqsBinaryPath { get; set; }

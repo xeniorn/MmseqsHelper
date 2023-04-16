@@ -13,7 +13,7 @@ public class MmseqsLookupObject
         
     public async Task WriteToFileSystemAsync(MmseqsSettings settings, string dbPath)
     {
-        var separator = settings.Mmseqs2Internal_LookupColumnSeparator;
+        var separator = settings.Mmseqs2Internal_LookupIntraEntryColumnSeparator;
             
         var lookupPath = $"{dbPath}{settings.Mmseqs2Internal_DbLookupSuffix}";
 
@@ -23,7 +23,11 @@ public class MmseqsLookupObject
         //var data = Encoding.ASCII.GetBytes(string.Join("\n", lines));
 
         var lines = Entries.Select(x =>
-            string.Join(separator, x.Value.EntryIndex, x.Value.ReferenceName, x.Value.PairingGroup) + '\n');
+            string.Join(separator, 
+                x.Value.EntryIndex, 
+                x.Value.ReferenceName, 
+                x.Value.PairingGroup) 
+            + settings.Mmseqs2Internal_LookupEntryTerminator);
         var data = Encoding.ASCII.GetBytes(string.Join("", lines));
 
         await File.WriteAllBytesAsync(lookupPath, data);

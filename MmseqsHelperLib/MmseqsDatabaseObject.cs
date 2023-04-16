@@ -1,4 +1,5 @@
 ﻿using System.Text;
+using AlphafoldPredictionLib;
 
 namespace MmseqsHelperLib;
 
@@ -21,6 +22,13 @@ public class MmseqsDatabaseObject
         return nextIndex;
     }
 
+    /// <summary>
+    /// Entries added as-is, does not attempt to extract proper trimmed headers or anything.
+    /// Treats byte data as byte data, agnostic to data type
+    /// </summary>
+    /// <param name="data"></param>
+    /// <param name="targetIndex"></param>
+    /// <exception cref="ArgumentException"></exception>
     public void Add(byte[] data, int targetIndex)
     {
         if (Entries.ContainsKey(targetIndex))
@@ -34,12 +42,21 @@ public class MmseqsDatabaseObject
     {
         var aggregateOffset = 0;
 
-        var separator = Encoding.ASCII.GetBytes(settings.Mmseqs2Internal_DataEntrySeparator);
-        var newline = Encoding.ASCII.GetBytes("\n");
+        byte[] separator;
+        separator = Encoding.ASCII.GetBytes(settings.Mmseqs2Internal_DataEntryTerminator);
 
-        if (DatabaseType == MmseqsDatabaseType.Header_GENERIC_DB)
+        switch (DatabaseType)
         {
-            dbPath = $"{dbPath}{settings.Mmseqs2Internal_DbHeaderSuffix}";
+            case MmseqsDatabaseType.Header_GENERIC_DB:
+                dbPath = $"{dbPath}{settings.Mmseqs2Internal_DbHeaderSuffix}";
+                break;
+            case MmseqsDatabaseType.Sequence_AMINO_ACIDS:
+            case MmseqsDatabaseType.Sequence_NUCLEOTIDES:
+            case MmseqsDatabaseType.Alignment_ALIGNMENT_RES:
+            case MmseqsDatabaseType.A3m_MSA_DB:
+                break;
+            default:
+                throw new NotImplementedException();
         }
 
         var dataDbPath = $"{dbPath}{settings.Mmseqs2Internal_DbDataSuffix}";
@@ -65,15 +82,14 @@ public class MmseqsDatabaseObject
         // on the other hand I'm avoiding ever creating a large single object, which is important because db sizes can be larger than largest possible byte[] in CLR (int32.maxvalue)
         foreach (var (index, data) in Entries)
         {
-            var entryDataLength = data.Length + settings.Mmseqs2Internal_DataEntrySeparator.Length;
+            var entryDataLength = data.Length + settings.Mmseqs2Internal_DataEntryTerminator.Length;
             var indexFragment = new MmseqsIndexEntry(index, aggregateOffset, entryDataLength);
             aggregateOffset += entryDataLength;
 
             await dataWriteStream.WriteAsync(data);
             await dataWriteStream.WriteAsync(separator);
 
-            await indexWriteStream.WriteAsync(GenerateMmseqsEntryLine(indexFragment, settings));
-            await indexWriteStream.WriteAsync(newline);
+            await indexWriteStream.WriteAsync(GenerateMmseqsIndexEntryBytes(indexFragment, settings));
         }
 
         await WriteDbTypeFileAsync(dbTypePath);
@@ -110,11 +126,14 @@ public class MmseqsDatabaseObject
 
     }
 
-    private byte[] GenerateMmseqsEntryLine(MmseqsIndexEntry mmseqsIndexEntry, MmseqsSettings settings)
+    private byte[] GenerateMmseqsIndexEntryBytes(MmseqsIndexEntry mmseqsIndexEntry, MmseqsSettings settings)
     {
-        var separator = settings.Mmseqs2Internal_IndexColumnSeparator;
-        var resultString = string.Join(separator, mmseqsIndexEntry.Index, mmseqsIndexEntry.StartOffset,
-            mmseqsIndexEntry.Length);
+        var separator = settings.Mmseqs2Internal_IndexIntraEntryColumnSeparator;
+        var resultString = string.Join(separator, 
+            mmseqsIndexEntry.Index, 
+            mmseqsIndexEntry.StartOffset,
+            mmseqsIndexEntry.Length)
+            + settings.Mmseqs2Internal_IndexEntryTerminator;
         return Encoding.ASCII.GetBytes(resultString);
     }
 }

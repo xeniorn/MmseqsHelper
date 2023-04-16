@@ -181,4 +181,18 @@ public static partial class Helper
         }
 
     }
+
+    public static string RemoveSuffix(string input, string suffix)
+    {
+        if (input.Length < suffix.Length) return input;
+        
+        var output = input;
+
+        while (output.EndsWith(suffix))
+        {
+            output = output.Substring(0, output.Length - suffix.Length);
+        }
+
+        return output;
+    }
 }
