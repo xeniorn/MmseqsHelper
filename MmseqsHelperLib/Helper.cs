@@ -66,8 +66,8 @@ public static partial class Helper
                 startInfo.EnvironmentVariables[name] = value;
             }
         }
-
-        using var process = new Process() { StartInfo = startInfo };
+        
+        using var process = new Process() { StartInfo = startInfo};
 
         return await RunProcessAsync(process).ConfigureAwait(false);
     }
@@ -75,7 +75,16 @@ public static partial class Helper
     private static Task<int> RunProcessAsync(Process process)
     {
         var tcs = new TaskCompletionSource<int>();
+
+        // important to EnableRaisingEvents, there is no exit event otherwise!
+        process.EnableRaisingEvents = true;
         process.Exited += (s, ea) => tcs.SetResult(process.ExitCode);
+
+        bool started = process.Start();
+        if (!started)
+        {
+            tcs.SetResult(int.MinValue);
+        }
 
         return tcs.Task;
     }
