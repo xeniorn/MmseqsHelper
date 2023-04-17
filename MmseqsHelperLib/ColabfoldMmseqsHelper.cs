@@ -560,9 +560,9 @@ public class ColabfoldMmseqsHelper
     {
         var localProcessingPath = Path.Join(workingDir, dbTarget.Database.Name, "pair");
         await Helper.CreateDirectoryAsync(localProcessingPath);
-        var targetDbPathBase = dbTarget.Database.Path;
-        var targetDbPathSeq = targetDbPathBase + Mmseqs.Settings.ExpectedSeqDbSuffix;
-        var targetDbPathAln = targetDbPathBase + Mmseqs.Settings.ExpectedAlnDbSuffix;
+        
+        var targetDbPathSeq = Mmseqs.GetProperDatabaseSeqPath(dbTarget.Database.Path);
+        var targetDbPathAln = Mmseqs.GetProperDatabaseAlignPath(dbTarget.Database.Path);
 
         var performanceParams = Mmseqs.PerformanceParams(dbTarget.RequestPreloadingToRam);
         
@@ -838,9 +838,9 @@ public class ColabfoldMmseqsHelper
     {
         var localProcessingPath = Path.Join(workingDir, dbTarget.Database.Name, "mono");
         await Helper.CreateDirectoryAsync(localProcessingPath);
-        var targetDbPathBase = dbTarget.Database.Path;
-        var targetDbPathSeq = targetDbPathBase + Mmseqs.Settings.ExpectedSeqDbSuffix;
-        var targetDbPathAln = targetDbPathBase + Mmseqs.Settings.ExpectedAlnDbSuffix;
+        
+        var targetDbPathSeq = Mmseqs.GetProperDatabaseSeqPath(dbTarget.Database.Path);
+        var targetDbPathAln = Mmseqs.GetProperDatabaseAlignPath(dbTarget.Database.Path);
 
         var performanceParams = Mmseqs.PerformanceParams(dbTarget.RequestPreloadingToRam);
 
@@ -963,9 +963,10 @@ public class ColabfoldMmseqsHelper
         var expectedGeneratedProfileSubPath = Path.Join("latest", "profile_1");
 
         var performanceParams = Mmseqs.PerformanceParams(dbTarget.RequestPreloadingToRam);
+        var targetDbPathRoot = Mmseqs.GetProperDatabaseRootPath(dbTarget.Database.Path);
 
         var searchResultDb = Path.Join(processingFolderRoot, $"search");
-        var searchPosParams = new List<string>() { qdbPath, dbTarget.Database.Path, searchResultDb, searchSubfolder };
+        var searchPosParams = new List<string>() { qdbPath, targetDbPathRoot, searchResultDb, searchSubfolder };
         await Mmseqs.RunMmseqsAsync(Mmseqs.searchModule, searchPosParams, $"{Settings.ColabfoldMmseqsParams.Search} {performanceParams}");
 
         //*******************************************hack up a profile db*******************************************************
@@ -999,9 +1000,10 @@ public class ColabfoldMmseqsHelper
         await Helper.CreateDirectoryAsync(searchSubfolder);
 
         var performanceParams = Mmseqs.PerformanceParams(dbTarget.RequestPreloadingToRam);
+        var targetDbPathRoot = Mmseqs.GetProperDatabaseRootPath(dbTarget.Database.Path);
 
         var searchResultDb = Path.Join(processingFolderRoot, $"search");
-        var searchPosParams = new List<string>() { profileDbPath, dbTarget.Database.Path, searchResultDb, searchSubfolder };
+        var searchPosParams = new List<string>() { profileDbPath, targetDbPathRoot, searchResultDb, searchSubfolder };
         await Mmseqs.RunMmseqsAsync(Mmseqs.searchModule, searchPosParams, $"{Settings.ColabfoldMmseqsParams.Search} {performanceParams}",
             MmseqsAdditionalOptionsForResultsThatGetHandledOutsideOfMmseqs);
 
@@ -1012,10 +1014,9 @@ public class ColabfoldMmseqsHelper
     {
         var localProcessingPath = Path.Join(workingDir, refDbTarget.Database.Name, "mono");
         await Helper.CreateDirectoryAsync(localProcessingPath);
-        var targetDbPathBase = refDbTarget.Database.Path;
-
-        var targetDbPathSeq = targetDbPathBase + Mmseqs.Settings.ExpectedSeqDbSuffix;
-        var targetDbPathAln = targetDbPathBase + Mmseqs.Settings.ExpectedAlnDbSuffix;
+        
+        var targetDbPathSeq = Mmseqs.GetProperDatabaseSeqPath(refDbTarget.Database.Path);
+        var targetDbPathAln = Mmseqs.GetProperDatabaseAlignPath(refDbTarget.Database.Path);
 
         var performanceParams = Mmseqs.PerformanceParams(refDbTarget.RequestPreloadingToRam);
 
@@ -1692,8 +1693,9 @@ public class ColabfoldMmseqsHelper
     {
         var performanceParams = Mmseqs.PerformanceParams(dbTarget.RequestPreloadingToRam);
 
-        var targetDbPathBase = dbTarget.Database.Path;
-        var targetDbPathSeq = targetDbPathBase + Mmseqs.Settings.ExpectedSeqDbSuffix;
+        var targetDbPathBase = Mmseqs.GetProperDatabaseRootPath(dbTarget.Database.Path);
+        var targetDbPathSeq = Mmseqs.GetProperDatabaseSeqPath(dbTarget.Database.Path);
+        
 
         var localProcessingPath = Path.Join(workingDir, dbTarget.Database.Name, "pairing");
         await Helper.CreateDirectoryAsync(localProcessingPath);

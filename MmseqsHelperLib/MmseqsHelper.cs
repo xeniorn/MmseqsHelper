@@ -403,6 +403,44 @@ namespace MmseqsHelperLib
                 }
             };
         }
+
+        public string GetProperDatabaseRootPath(string naiveDbPath)
+        {
+            if (Settings.UsePrecalculatedIndex)
+            {
+                return $"{naiveDbPath}{Settings.Mmseqs2Internal.PrecalculatedIndexSuffix}";
+            }
+            else
+            {
+                return naiveDbPath;
+            }
+        }
+
+        public string GetProperDatabaseSeqPath(string naiveDbPath)
+        {
+            if (Settings.UsePrecalculatedIndex)
+            {
+                return $"{naiveDbPath}{Settings.Mmseqs2Internal.PrecalculatedIndexSuffix}";
+            }
+            else
+            {
+                return $"{naiveDbPath}{Settings.Mmseqs2Internal.SourceDatabaseSequenceSuffix}"; ;
+            }
+        }
+
+        public string GetProperDatabaseAlignPath(string naiveDbPath)
+        {
+            if (Settings.UsePrecalculatedIndex)
+            {
+                return $"{naiveDbPath}{Settings.Mmseqs2Internal.PrecalculatedIndexSuffix}";
+            }
+            else
+            {
+                return $"{naiveDbPath}{Settings.Mmseqs2Internal.SourceDatabaseAlignmentSuffix}"; ;
+            }
+        }
+
+
     }
 
     public enum MmseqsNonParametrizedOption
