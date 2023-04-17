@@ -55,6 +55,13 @@ internal static class Helper
         return "{\n" + values + "\n}";
     }
 
+    public static bool ParseBoolOrDefault(string s, bool defaultValue)
+    {
+        var success = TryParseBool(s, out var parsed);
+        if (success) return parsed;
+        return defaultValue;
+    }
+
     public static bool TryParseBool(string s, out bool parsedValue)
     {
         var trueValues = new List<string>() { "true", "t", "1" };

@@ -210,8 +210,8 @@ public class ColabfoldMmseqsHelper
 
             // there should be only one matching subfolder? we are looking at features that have the same location, db name, type. So they should map to the same subfolder
             // still this is fragile, therefore TODO: make this better
-            var subfolder = featuresInThisPersistedDb.Select(x => x.FeatureSubFolderPath).Distinct().Single();
-            string mmseqsDb = Path.Join(dbLocation, subfolder, persistedDbName);
+            var dbTargetSubfolder = featuresInThisPersistedDb.Select(x => x.FeatureSubFolderPath).Distinct().Single();
+            string mmseqsDb = Path.Join(dbLocation, dbTargetSubfolder, persistedDbName);
             // queue up the reads
             resultTasksMapping.Add((dbLocation, Mmseqs.ReadEntriesWithIndicesFromDataDbAsync(mmseqsDb, mmseqsIndicesForProteinsInThisPersistedDb)));
             
@@ -234,7 +234,7 @@ public class ColabfoldMmseqsHelper
             }
 
             // fire and forget
-            if (Settings.ComputingConfig.ReportSuccessfulUsageOfPersistedDb) _ = Task.Run(() => ReportMonoDbWasUsedAsync(dbLocation));
+            if (Settings.ComputingConfig.ReportSuccessfulUsageOfPersistedDb) _ = Task.Run(() => ReportMonoDbWasUsedAsync(dbLocation)).ConfigureAwait(false);
         }
     }
 
@@ -391,7 +391,7 @@ public class ColabfoldMmseqsHelper
         var locator = new MmseqsDbLocator();
 
         //*******************************************figure out which mono dbs contain relevant entries at which indices*******************************************************
-        //******************************************* check which persisted dbs used each target mono and have the desired features *******************************************************
+        //******************************************* check which persisted dbs used each target mono and have the desired features *******************************************
         var requiredFeatures = GetRequiredMonoDbFeaturesForPredictions(predictionBatch);
         var (missingFeatures, usableFeatures) =
             await GetUsableAndMissingFeaturesAsync(persistedMonoDatabasesPaths, requiredFeatures, dbProcessingBatchSize);
@@ -414,27 +414,14 @@ public class ColabfoldMmseqsHelper
                 return (locator, new List<PredictionTarget>());
             }
         }
+        
+        List<Task> writeTasks = new List<Task>();
 
         var predictionsToExtractDataFor = predictionBatch.Except(unfeasiblePredictions).ToList();
-        //var predictionsForPairing = GetPredictionsThatRequirePairing(predictionsToExtractDataFor);
         var predictionsForPairing = predictionsToExtractDataFor;
-
         
-        //******************************************* generate new qdb *******************************************************
-        var predictionToIndicesMapping = GeneratePredictionToIndexMapping(predictionsToExtractDataFor);
-        var queryDatabaseForPairing = GenerateQdbForPairing(predictionsToExtractDataFor, predictionToIndicesMapping);
-        locator.QdbIndicesMapping = predictionToIndicesMapping;
-
-        var pairedQdb = Path.Join(workingDir, "qdb_pair");
-        locator.PairingQdbPath = pairedQdb;
-        var writeTasks = new List<Task> {
-            queryDatabaseForPairing.WriteToFileSystemAsync(Mmseqs.Settings, pairedQdb)
-        };
-
-        //******************************************* and read in relevant fragments of align files*******************************************************
         //******************************************* reconstruct align data dbs *******************************************************
         //******************************************* reconstruct mono data dbs ********************************************************
-
         // we are simulating what would happen if we were running it from scratch. For each db used for unpaired, compile a mono a3m db from existing results,
         // that maps to the new constructed qdb indices.
         // For each db that is used for pairing, construct an align1 db from existing results.
@@ -475,6 +462,23 @@ public class ColabfoldMmseqsHelper
                 locator.UnPairedA3mDbPathMapping.Add(dbTarget, unpairedA3mDb);
             }
         }
+
+
+
+
+        //******************************************* generate new qdb *******************************************************
+        var predictionToIndicesMapping = GeneratePredictionToIndexMapping(predictionsToExtractDataFor);
+        var queryDatabaseForPairing = GenerateQdbForPairing(predictionsToExtractDataFor, predictionToIndicesMapping);
+        locator.QdbIndicesMapping = predictionToIndicesMapping;
+
+        var pairedQdb = Path.Join(workingDir, "qdb_pair");
+        locator.PairingQdbPath = pairedQdb;
+
+        writeTasks.Add(queryDatabaseForPairing.WriteToFileSystemAsync(Mmseqs.Settings, pairedQdb));
+
+
+
+
 
         await Task.WhenAll(writeTasks);
         return (locator, predictionsToExtractDataFor);

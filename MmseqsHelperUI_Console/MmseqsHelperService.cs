@@ -162,6 +162,11 @@ internal sealed class MmseqsHelperService
 
     private SearchDatabasesConfiguration GetDbTargetConfig()
     {
+        //TODO: unhack it
+        var preloadToRam = Helper.ParseBoolOrDefault(_configuration["UseRamPreloading"], false);
+        var usePairing = Helper.ParseBoolOrDefault(_configuration["UsePairing"], true);
+        var useEnvDb = Helper.ParseBoolOrDefault(_configuration["UseEnv"], true);
+
         var uniprotDbPath = _configuration["UniprotDbPath"];
         var envDbPath = _configuration["EnvDbPath"];
 
@@ -172,16 +177,20 @@ internal sealed class MmseqsHelperService
         var envDb = new MmseqsSourceDatabase(envDbName, envDbPath, new MmseqsSourceDatabaseFeatures(HasTaxonomyData: false));
 
         //TODO: definitely move this to external config asap. we can't be initializing stuff hardcoded
-        var uniprotDbTarget = new MmseqsSourceDatabaseTarget(uniprotDb, true, true, false);
-        var envDbTarget = new MmseqsSourceDatabaseTarget(envDb, true, false, false);
+        var uniprotDbTarget = new MmseqsSourceDatabaseTarget(uniprotDb, true, usePairing, preloadToRam);
+        var envDbTarget = new MmseqsSourceDatabaseTarget(envDb, true, false, preloadToRam);
 
         var refDbTarget = uniprotDbTarget;
 
         var dbTargets = new List<MmseqsSourceDatabaseTarget>()
         {
-            uniprotDbTarget,
-            envDbTarget
+            uniprotDbTarget
         };
+
+        if (useEnvDb)
+        {
+            dbTargets.Add(envDbTarget);
+        }
 
         return new SearchDatabasesConfiguration()
         {
