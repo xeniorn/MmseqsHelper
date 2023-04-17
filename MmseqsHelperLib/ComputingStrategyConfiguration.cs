@@ -10,4 +10,7 @@ public class ComputingStrategyConfiguration
     
     public MmseqsSettings MmseqsSettings { get; set; }
     public bool ReportSuccessfulUsageOfPersistedDb { get; set; }
+
+    
+
 }

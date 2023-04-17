@@ -20,13 +20,14 @@ public static partial class Helper
     /// </summary>
     /// <param name="fileName"></param>
     /// <param name="args"></param>
+    /// <param name="envVarsToSet"></param>
     /// <param name="liveIoStreams"></param>
     /// <returns></returns>
-    public static async Task<int> RunProcessAsync(string fileName, string args,
-        (Stream? output, Stream? error)? liveIoStreams = null)
+    public static async Task<int> RunProcessWithLiveStreamsAsync(string fileName, string args,
+        (Stream? output, Stream? error) liveIoStreams)
     {
-        var useOut = (liveIoStreams?.output is not null);
-        var useErr = (liveIoStreams?.error is not null);
+        var useOut = (liveIoStreams.output is not null);
+        var useErr = (liveIoStreams.error is not null);
 
         using var process = new Process()
         {
@@ -41,10 +42,45 @@ public static partial class Helper
             EnableRaisingEvents = true
         };
 
-        return await RunProcessAsync(process, liveIoStreams?.output, liveIoStreams?.error); //.ConfigureAwait(false);
+        return await RunProcessWithLiveStreamsAsync(process, liveIoStreams.output, liveIoStreams.error); //.ConfigureAwait(false);
     }
 
-    private static Task<int> RunProcessAsync(Process process, Stream? outStream = null, Stream? errStream = null)
+
+    public static async Task<int> RunProcessAsync(string fileName, string args, Dictionary<string, string>? envVarsToSet = null)
+    {
+        var startInfo = new ProcessStartInfo(fileName, args )
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = false,
+            RedirectStandardError = false,
+            RedirectStandardInput = false
+        };
+
+        if (envVarsToSet is not null)
+        {
+            foreach (var (name, value) in envVarsToSet)
+            {
+                // this also creates it if it doesn't exist, apparently
+                // https://stackoverflow.com/questions/14553830/set-environment-variables-for-a-process/14582921#14582921
+                startInfo.EnvironmentVariables[name] = value;
+            }
+        }
+
+        using var process = new Process() { StartInfo = startInfo };
+
+        return await RunProcessAsync(process).ConfigureAwait(false);
+    }
+
+    private static Task<int> RunProcessAsync(Process process)
+    {
+        var tcs = new TaskCompletionSource<int>();
+        process.Exited += (s, ea) => tcs.SetResult(process.ExitCode);
+
+        return tcs.Task;
+    }
+
+    private static Task<int> RunProcessWithLiveStreamsAsync(Process process, Stream? outStream = null, Stream? errStream = null)
     {
         var tcs = new TaskCompletionSource<int>();
 

@@ -1,6 +1,7 @@
 ﻿using AlphafoldPredictionLib;
 using FastaHelperLib;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.Linq;
 using System.Text;
 
@@ -25,7 +26,14 @@ public class ColabfoldMmseqsHelper
 
         HelperDatabaseVersion = GetColabfoldMmseqsHelperDatabaseVersion();
         MmseqsVersion = GetMmseqsVersion();
+
+        MmseqsAdditionalOptionsForResultsThatGetHandledOutsideOfMmseqs = NonParametrizedMmseqsOptions.Combine(new[]
+        {
+            MmseqsHelper.GetOptionsThatEnsureMergedResults()
+        });
     }
+
+    public NonParametrizedMmseqsOptions? MmseqsAdditionalOptionsForResultsThatGetHandledOutsideOfMmseqs { get;}
 
     public string HelperDatabaseVersion { get; set; }
 
@@ -482,9 +490,9 @@ public class ColabfoldMmseqsHelper
 
         var workingDir = Path.Join(Settings.ComputingConfig.TempPath, batchId);
         await Helper.CreateDirectoryAsync(workingDir);
-
+        
         LogSomething($"Starting pairing batch {batchId} with {predictionBatch.Count} items in {workingDir}.");
-
+        
         //TODO: check if it has all the required dbs: qdb header, (qdb seq => technically not really needed), aligndb, monoa3m
         // not sure where it's best to do this without duplicating the entire search. Probably step-wise, also to allow pair-only mode later
 
@@ -553,6 +561,7 @@ public class ColabfoldMmseqsHelper
         var targetDbPathAln = targetDbPathBase + Mmseqs.Settings.ExpectedAlnDbSuffix;
 
         var performanceParams = Mmseqs.PerformanceParams(dbTarget.RequestPreloadingToRam);
+        
 
         //*******************************************expand*******************************************************
         var expandResultDb = Path.Join(localProcessingPath, $"expand");
@@ -576,7 +585,8 @@ public class ColabfoldMmseqsHelper
             alignResultDb,
 
         };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.alignModule, alignPosParams, $"{Settings.ColabfoldMmseqsParams.Paired.Align1} {performanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.alignModule, alignPosParams, $"{Settings.ColabfoldMmseqsParams.Paired.Align1} {performanceParams}",
+            MmseqsAdditionalOptionsForResultsThatGetHandledOutsideOfMmseqs);
 
         return alignResultDb;
     }
@@ -612,7 +622,7 @@ public class ColabfoldMmseqsHelper
 
         var createDbParameters = new CreateDbParameters();
         createDbParameters.ApplyDefaults();
-        await Mmseqs.CreateDbAsync(queryFastaPath, qdbPath, createDbParameters);
+        await Mmseqs.CreateDbAsync(new [] {queryFastaPath}, qdbPath, createDbParameters);
 
         //*******************************************initial search to get search & profile dbs, using reference database ****************************
         var (refSearchDb, refProfileDb) = await Task.Run(() => GenerateReferenceSearchAndCreateProfileDbAsync(ReferenceSourceDatabaseTarget, workingDir, qdbPath));
@@ -877,7 +887,8 @@ public class ColabfoldMmseqsHelper
             filterResultDb,
             msaConvertResultDb,
         };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.msaConvertModule, msaConvertPosParams, $"{Settings.ColabfoldMmseqsParams.Unpaired.MsaConvert} {performanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.msaConvertModule, msaConvertPosParams, $"{Settings.ColabfoldMmseqsParams.Unpaired.MsaConvert} {performanceParams}",
+            MmseqsAdditionalOptionsForResultsThatGetHandledOutsideOfMmseqs);
 
         return msaConvertResultDb;
     }
@@ -987,7 +998,8 @@ public class ColabfoldMmseqsHelper
 
         var searchResultDb = Path.Join(processingFolderRoot, $"search");
         var searchPosParams = new List<string>() { profileDbPath, dbTarget.Database.Path, searchResultDb, searchSubfolder };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.searchModule, searchPosParams, $"{Settings.ColabfoldMmseqsParams.Search} {performanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.searchModule, searchPosParams, $"{Settings.ColabfoldMmseqsParams.Search} {performanceParams}",
+            MmseqsAdditionalOptionsForResultsThatGetHandledOutsideOfMmseqs);
 
         return searchResultDb;
     }
@@ -1046,7 +1058,8 @@ public class ColabfoldMmseqsHelper
             filterResultDb,
             msaConvertResultDb,
         };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.msaConvertModule, msaConvertPosParams, $"{Settings.ColabfoldMmseqsParamsUnpairedSpecialForReferenceDb.MsaConvert} {performanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.msaConvertModule, msaConvertPosParams, $"{Settings.ColabfoldMmseqsParamsUnpairedSpecialForReferenceDb.MsaConvert} {performanceParams}",
+            MmseqsAdditionalOptionsForResultsThatGetHandledOutsideOfMmseqs);
 
         return msaConvertResultDb;
     }
@@ -1724,7 +1737,8 @@ public class ColabfoldMmseqsHelper
             pair2ResultDb,
             msaConvertResultDb,
         };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.msaConvertModule, msaConvertPosParams, $"{Settings.ColabfoldMmseqsParams.Paired.MsaConvert} {performanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.msaConvertModule, msaConvertPosParams, $"{Settings.ColabfoldMmseqsParams.Paired.MsaConvert} {performanceParams}",
+            MmseqsAdditionalOptionsForResultsThatGetHandledOutsideOfMmseqs);
 
         return msaConvertResultDb;
     }

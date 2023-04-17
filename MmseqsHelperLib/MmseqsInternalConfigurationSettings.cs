@@ -38,6 +38,11 @@ public class MmseqsInternalConfigurationSettings
     public string LookupIntraEntryColumnSeparator { get; init; } = "\t";
     public string DbLoadModeParameterValueForDatabaseIndexPreloadedToRam { get; init; } = "2";
     public string DbLoadModeParameterValueForReadDatabaseFromDisk { get; init; } = "0";
+    
+    public string EnvVar_ForceDatabaseMerging_Name { get; init; } = "MMSEQS_FORCE_MERGE";
+    public string EnvVar_ForceDatabaseMerging_EnablingValue { get; init; } = "1";
+    public string EnvVar_IgnorePrecomputedIndex_Name { get; init; } = "MMSEQS_IGNORE_INDEX";
+    public string EnvVar_IgnorePrecomputedIndex_EnablingValue { get; init; } = "1";
 
     //public string ToJson()
     //{

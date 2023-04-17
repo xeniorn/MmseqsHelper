@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace MmseqsHelperLib
 {
@@ -28,7 +29,15 @@ namespace MmseqsHelperLib
         {
             _logger = logger;
             Settings = inputSettings ?? GetDefaultSettings();
+            
+            if (!Settings.UsePrecalculatedIndex)
+            {
+                GlobalAdditionalOptions = new NonParametrizedMmseqsOptions();
+                GlobalAdditionalOptions.Options.Add(MmseqsNonParametrizedOption.IgnorePrecomputedIndex);
+            }
         }
+
+        private NonParametrizedMmseqsOptions? GlobalAdditionalOptions { get; }
 
         public MmseqsSettings Settings { get; set; }
         
@@ -55,12 +64,7 @@ namespace MmseqsHelperLib
             return (true, resultDb);
 
         }
-
-        public async Task CreateDbAsync(string queryFastaPath, string outputDbNameBase, CreateDbParameters createDbParameters)
-        {
-            await CreateDbAsync(new List<string> { queryFastaPath }, outputDbNameBase, createDbParameters);
-        }
-
+        
         public async Task CreateDbAsync(IEnumerable<string> inputPaths, string outputDbNameBase, CreateDbParameters parameters)
         {
             var command = parameters.CommandString;
@@ -68,7 +72,7 @@ namespace MmseqsHelperLib
             await RunMmseqsAsync(command, positionalArguments, parameters);
         }
 
-        public async Task RunMmseqsAsync(string mmseqsModule, IEnumerable<string> positionalArguments, MmseqsCommandLineParameters nonPositionalParameters)
+        private async Task RunMmseqsAsync(string mmseqsModule, IEnumerable<string> positionalArguments, MmseqsCommandLineParameters nonPositionalParameters)
         {
             var parametersString = String.Join(" ", nonPositionalParameters.GetNonDefault().Select(x => x.GetCommandLineString()));
             await RunMmseqsAsync(mmseqsModule, positionalArguments, parametersString);
@@ -96,45 +100,37 @@ namespace MmseqsHelperLib
         }
 
 
-        public async Task<(string stdout, string strderr)> Deprecated_GetMmseqsResponseAsync(string mmseqsModule, IEnumerable<string> positionalArguments, string nonPositionalParametersString)
+        public async Task RunMmseqsAsync(string mmseqsModule, IEnumerable<string> positionalArguments, string nonPositionalParametersString, NonParametrizedMmseqsOptions? additionalOptions = null)
         {
             var fullFilePath = Helper.EnsureQuotedIfWhiteSpace(Settings.MmseqsBinaryPath);
             var positionalArgumentsString = String.Join(" ", positionalArguments.Select(Helper.EnsureQuotedIfWhiteSpace));
             var processArgumentsString = $"{mmseqsModule} {positionalArgumentsString} {nonPositionalParametersString}";
 
-            LogSomething($"{fullFilePath} {processArgumentsString}");
+            Dictionary<string, string>? envVarsToSet = null;
 
-            using var outStream = new MemoryStream();
-            using var errStream = new MemoryStream();
-
-            var exitCode = await Helper.RunProcessAsync(fullFilePath, processArgumentsString, (outStream, errStream));
-
-            const int successExit = 0;
-            if (exitCode != successExit)
-                throw new Exception(
-                    $"Return: {exitCode}. Failed to run mmseqs {fullFilePath}; {processArgumentsString}.");
-
-            using var outRead = new StreamReader(outStream);
-            using var errRead = new StreamReader(errStream);
-
-            var outText = await outRead.ReadToEndAsync();
-            var errText = await errRead.ReadToEndAsync();
-
-            return (outText, errText);
-        }
-
-        public async Task RunMmseqsAsync(string mmseqsModule, IEnumerable<string> positionalArguments, string nonPositionalParametersString)
-        {
-            var fullFilePath = Helper.EnsureQuotedIfWhiteSpace(Settings.MmseqsBinaryPath);
-            var positionalArgumentsString = String.Join(" ", positionalArguments.Select(Helper.EnsureQuotedIfWhiteSpace));
-            var processArgumentsString = $"{mmseqsModule} {positionalArgumentsString} {nonPositionalParametersString}";
+            if (GlobalAdditionalOptions is not null || additionalOptions is not null)
+            {
+                var options = NonParametrizedMmseqsOptions.Combine(new[] { GlobalAdditionalOptions, additionalOptions })!;
+                if (options.Options.Any())
+                {
+                    envVarsToSet = new Dictionary<string, string>();
+                    if (options.Options.Contains(MmseqsNonParametrizedOption.ForceMergingOfOutputDatabases))
+                    {
+                        envVarsToSet.Add(Settings.Mmseqs2Internal.EnvVar_ForceDatabaseMerging_Name, Settings.Mmseqs2Internal.EnvVar_ForceDatabaseMerging_EnablingValue);
+                    };
+                    if (options.Options.Contains(MmseqsNonParametrizedOption.IgnorePrecomputedIndex))
+                    {
+                        envVarsToSet.Add(Settings.Mmseqs2Internal.EnvVar_IgnorePrecomputedIndex_Name, Settings.Mmseqs2Internal.EnvVar_IgnorePrecomputedIndex_EnablingValue);
+                    };
+                }
+            }
 
             LogSomething($"{fullFilePath} {processArgumentsString}");
-#if DEBUG 
+#if DEBUGx 
             return;
 #endif
 
-            var exitCode = await Helper.RunProcessAsync(fullFilePath, processArgumentsString);
+            var exitCode = await Helper.RunProcessAsync(fullFilePath, processArgumentsString, envVarsToSet);
 
             const int successExit = 0;
             if (exitCode != successExit)
@@ -396,5 +392,46 @@ namespace MmseqsHelperLib
             var response = await GetMmseqsResponseAsync(versionModule, new List<string>(), string.Empty);
             return response.Trim();
         }
+
+        public static NonParametrizedMmseqsOptions GetOptionsThatEnsureMergedResults()
+        {
+            return new NonParametrizedMmseqsOptions()
+            {
+                Options = new HashSet<MmseqsNonParametrizedOption>()
+                {
+                    MmseqsNonParametrizedOption.ForceMergingOfOutputDatabases
+                }
+            };
+        }
     }
+
+    public enum MmseqsNonParametrizedOption
+    {
+        ForceMergingOfOutputDatabases,
+        IgnorePrecomputedIndex
+    }
+
+    public class NonParametrizedMmseqsOptions
+    {
+        public HashSet<MmseqsNonParametrizedOption> Options { get; set; } = new();
+
+        public static NonParametrizedMmseqsOptions? Combine(IEnumerable<NonParametrizedMmseqsOptions?> sourceOptions)
+        {
+            NonParametrizedMmseqsOptions? res = null;
+            
+            foreach (var options in sourceOptions)
+            {
+                if (options is null) continue;
+                if (res is null) res = new NonParametrizedMmseqsOptions();
+
+                foreach (var option in options.Options)
+                {
+                    res.Options.Add(option);
+                }
+            }
+
+            return res;
+        }
+    }
+
 }

@@ -24,13 +24,13 @@ public class MmseqsSettings
     {
         return new Dictionary<string, string>()
         {
-            { "data", $"{Mmseqs2Internal.DbDataSuffix}" },
-            { "data.index", $"{Mmseqs2Internal.DbDataSuffix}{Mmseqs2Internal.DbIndexSuffix}" },
-            { "data.dbtype", $"{Mmseqs2Internal.DbDataSuffix}{Mmseqs2Internal.DbTypeSuffix}" },
-            { "data_header", $"{Mmseqs2Internal.DbDataSuffix}{Mmseqs2Internal.DbHeaderSuffix}" },
-            { "data_header.index", $"{Mmseqs2Internal.DbDataSuffix}{Mmseqs2Internal.DbHeaderSuffix}{Mmseqs2Internal.DbIndexSuffix}" },
-            { "data_header.dbtype", $"{Mmseqs2Internal.DbDataSuffix}{Mmseqs2Internal.DbHeaderSuffix}{Mmseqs2Internal.DbTypeSuffix}" },
-            { "data.lookup", $"{Mmseqs2Internal.DbDataSuffix}{Mmseqs2Internal.DbLookupSuffix}" }
+            { "name", $"{Mmseqs2Internal.DbDataSuffix}" },
+            { "name.index", $"{Mmseqs2Internal.DbDataSuffix}{Mmseqs2Internal.DbIndexSuffix}" },
+            { "name.dbtype", $"{Mmseqs2Internal.DbDataSuffix}{Mmseqs2Internal.DbTypeSuffix}" },
+            { "name_h", $"{Mmseqs2Internal.DbHeaderSuffix}" },
+            { "name_h.index", $"{Mmseqs2Internal.DbHeaderSuffix}{Mmseqs2Internal.DbIndexSuffix}" },
+            { "name_h.dbtype", $"{Mmseqs2Internal.DbHeaderSuffix}{Mmseqs2Internal.DbTypeSuffix}" },
+            { "name.lookup", $"{Mmseqs2Internal.DbLookupSuffix}" }
         };
     }
 
