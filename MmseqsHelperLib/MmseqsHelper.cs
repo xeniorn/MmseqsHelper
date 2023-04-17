@@ -1,6 +1,4 @@
 ﻿using Microsoft.Extensions.Logging;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace MmseqsHelperLib
 {
@@ -19,9 +17,12 @@ namespace MmseqsHelperLib
 
         private readonly ILogger _logger;
 
-        public static MmseqsSettings GetDefaultSettings() => new MmseqsSettings();
+        public static MmseqsSettings GetDefaultSettings() => new ();
 
-        public string PerformanceParams => @$"--threads {Settings.ThreadsPerProcess} --db-load-mode {(Settings.PreLoadDb ? 2 : 0)}";
+        public string PerformanceParams(bool isDatabasePreloadedToRam) => 
+            @$"--threads {Settings.ThreadsPerProcess} --db-load-mode {(isDatabasePreloadedToRam 
+                ? Settings.Mmseqs2Internal.DbLoadModeParameterValueForDatabaseIndexPreloadedToRam
+                : Settings.Mmseqs2Internal.DbLoadModeParameterValueForReadDatabaseFromDisk)}";
 
         public MmseqsHelper(MmseqsSettings? inputSettings, ILogger logger)
         {

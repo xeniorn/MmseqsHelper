@@ -13,7 +13,7 @@ internal class MmseqsHelperModeGenerateA3mFilesForColabfold : MmseqsHelperMode
         return new Dictionary<string, (string defaultValue, bool required)>()
         {
             { "InputFastaPaths", ("\"fasta1,fasta2,fasta3\"", true) },
-            { "ExistingDatabasePaths", ("\"/path/to/existing/db1/,/path/to/existing/db2/,/path/to/existing/db3/\"", true) },
+            { "PersistedMonoDatabasePaths", ("\"/path/to/existing/db1/,/path/to/existing/db2/,/path/to/existing/db3/\"", true) },
             { "ExistingA3mPaths", ("\"/path/to/existing/a3mdb/\"", false)},
             { "MmseqsBinaryPath", ("./mmseqs", true) },
             { "UniprotDbPath", ("/resources/colabfold/UniRef30_2022_02/uniref30_2202_db", true) },

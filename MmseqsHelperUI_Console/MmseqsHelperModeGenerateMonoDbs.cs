@@ -13,7 +13,7 @@ internal class MmseqsHelperModeGenerateMonoDbs : MmseqsHelperMode
         return new Dictionary<string, (string defaultValue, bool required)>()
         {
             { "InputFastaPaths", ("\"fasta1,fasta2,fasta3\"", true) },
-            { "ExistingDatabasePaths", ("\"/path/to/existing/db1/,/path/to/existing/db2/,/path/to/existing/db3/\"", false) },
+            { "PersistedMonoDatabasePaths", ("\"/path/to/existing/db1/,/path/to/existing/db2/,/path/to/existing/db3/\"", false) },
             { "MmseqsBinaryPath", ("./mmseqs", true) },
             { "UniprotDbPath", ("/resources/colabfold/UniRef30_2022_02/uniref30_2202_db", true) },
             { "EnvDbPath", ("/resources/colabfold/UniRef30_2022_02/colabfold_envdb_202108_db", true) },

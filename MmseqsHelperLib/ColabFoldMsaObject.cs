@@ -18,14 +18,14 @@ public class ColabFoldMsaObject
     public PredictionTarget PredictionTarget { get; }
     private ColabfoldMsaMetadataInfo Metadata { get; set; }
     
-    public async Task WriteToFileSystemAsync(AutoColabfoldMmseqsSettings settings, string targetFolder)
+    public async Task WriteToFileSystemAsync(ColabfoldMmseqsHelperSettings settings, string targetFolder, string mmseqsVersion, string helperDatabaseVersion)
     {
         Metadata = new ColabfoldMsaMetadataInfo(predictionTarget: PredictionTarget, createTime: DateTime.Now,
-            mmseqsHelperDatabaseVersion: settings.ColabfoldMmseqsHelperDatabaseVersion,
-            mmseqsVersion: settings.MmseqsVersion);
+            mmseqsHelperDatabaseVersion: helperDatabaseVersion,
+            mmseqsVersion: mmseqsVersion);
 
-        var fullMsaPath = Path.Join(targetFolder, settings.PersistedDbFinalA3mName);
-        var fullInfoPath = Path.Join(targetFolder, settings.PersistedDbFinalA3mInfoName);
+        var fullMsaPath = Path.Join(targetFolder, settings.PersistedA3mDbConfig.ResultA3mFilename);
+        var fullInfoPath = Path.Join(targetFolder, settings.PersistedA3mDbConfig.A3mInfoFilename);
         var writeTasks = new List<Task>()
         {
             File.WriteAllBytesAsync(fullMsaPath, GetBytes()),
@@ -33,6 +33,8 @@ public class ColabFoldMsaObject
         };
         await Task.WhenAll(writeTasks);
     }
+
+    
 
     private byte[] GetBytes()
     {

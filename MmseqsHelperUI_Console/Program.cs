@@ -86,7 +86,7 @@ internal sealed class Program
                 //builder.AddInMemoryCollection(new List<KeyValuePair<string, string>>()
                 //{
                 //    new("InputFastaPaths",@"C:\temp\mmseqs_test\input.fasta"),
-                //    new("ExistingDatabasePaths",@"C:\temp\mmseqs_test\result_db"),
+                //    new("PersistedMonoDatabasePaths",@"C:\temp\mmseqs_test\result_db"),
                 //    new("OutputPath",@"C:\temp\mmseqs_test\out" )
                 //});
             }

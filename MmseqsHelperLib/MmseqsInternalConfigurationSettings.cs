@@ -36,17 +36,19 @@ public class MmseqsInternalConfigurationSettings
     // 0    headerX    0
     // 1    headerX    0
     public string LookupIntraEntryColumnSeparator { get; init; } = "\t";
+    public string DbLoadModeParameterValueForDatabaseIndexPreloadedToRam { get; init; } = "2";
+    public string DbLoadModeParameterValueForReadDatabaseFromDisk { get; init; } = "0";
 
     //public string ToJson()
     //{
 
     //    using var stream = File.Create(@"C:\temp\xxxset.json");
     //    using var writer = new StreamWriter(stream);
-        
+
     //    //JsonSerializer.Serialize(stream, this, new JsonSerializerOptions() {IgnoreReadOnlyProperties = false, IgnoreReadOnlyFields = false});
     //    JsonSerializer.Serialize(stream, this, new JsonSerializerOptions() { WriteIndented = true});
 
     //    return "";
     //}
-    
+
 }

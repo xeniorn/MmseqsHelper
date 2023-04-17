@@ -18,7 +18,7 @@
   "DbHeaderSuffix": "_h",
   "DbDataSuffix": "",
   "DbIndexSuffix": ".index",
-  "DbLookupSuffix": ".loooookup",
+  "DbLookupSuffix": ".lookup",
   "DbTypeSuffix": ".dbtype",
   "SourceDatabaseSequenceSuffix": "_seq",
   "SourceDatabaseAlignmentSuffix": "_aln",

@@ -8,7 +8,6 @@ public class MmseqsSettings
         //Mmseqs2Internal.ToJson();
     }
     
-    public bool PreLoadDb { get; set; } = false;
     public bool UsePrecalculatedIndex { get; set; } = true;
 
     public MmseqsInternalConfigurationSettings Mmseqs2Internal { get; set; }
@@ -16,8 +15,6 @@ public class MmseqsSettings
     public string ExpectedSeqDbSuffix => UsePrecalculatedIndex ? Mmseqs2Internal.PrecalculatedIndexSuffix : Mmseqs2Internal.SourceDatabaseSequenceSuffix;
     public string ExpectedAlnDbSuffix => UsePrecalculatedIndex ? Mmseqs2Internal.PrecalculatedIndexSuffix : Mmseqs2Internal.SourceDatabaseAlignmentSuffix;
     
-    public string TempPath { get; set; } = Path.GetTempPath();
-
     public string MmseqsBinaryPath { get; set; }
 
     public int ThreadsPerProcess { get; set; } = 1;
