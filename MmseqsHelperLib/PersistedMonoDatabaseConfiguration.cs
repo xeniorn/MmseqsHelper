@@ -13,4 +13,5 @@ public class PersistedMonoDatabaseConfiguration
 
     public string MonoA3mDbName { get; init; } = @"final_mono_a3m_mmseqsdb";
     public string QdbName { get; init; } = @"qdb";
+    public string LastAccessReporterFilename { get; init; } = "LAST_USED";
 }

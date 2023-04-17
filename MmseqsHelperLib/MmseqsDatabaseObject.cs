@@ -15,10 +15,10 @@ public class MmseqsDatabaseObject
     private Dictionary<int, byte[]> Entries = new ();
     public int EntryCount => Entries.Count;
 
-    public int Add(byte[] data)
+    public int AddData(byte[] data)
     {
         var nextIndex = Entries.Count > 0 ? Entries.Keys.Max() + 1 : 0;
-        Add(data, nextIndex);
+        AddData(data, nextIndex);
         return nextIndex;
     }
 
@@ -29,7 +29,7 @@ public class MmseqsDatabaseObject
     /// <param name="data"></param>
     /// <param name="targetIndex"></param>
     /// <exception cref="ArgumentException"></exception>
-    public void Add(byte[] data, int targetIndex)
+    public void AddData(byte[] data, int targetIndex)
     {
         if (Entries.ContainsKey(targetIndex))
         {
@@ -40,7 +40,7 @@ public class MmseqsDatabaseObject
 
     public async Task WriteToFileSystemAsync(MmseqsSettings settings, string dbPath)
     {
-        var aggregateOffset = 0;
+        long aggregateOffset = 0;
 
         byte[] separator;
         separator = Encoding.ASCII.GetBytes(settings.Mmseqs2Internal.DataEntryTerminator);

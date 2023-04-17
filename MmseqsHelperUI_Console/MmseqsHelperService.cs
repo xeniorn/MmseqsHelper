@@ -104,7 +104,8 @@ internal sealed class MmseqsHelperService
             MaxDesiredMonoBatchSize = 500,
             MaxDesiredPredictionTargetBatchSize = 1000,
             ExistingDatabaseSearchParallelizationFactor = 20,
-            MmseqsSettings = GetMmseqsSettings()
+            MmseqsSettings = GetMmseqsSettings(),
+            ReportSuccessfulUsageOfPersistedDb = true
     };
 
         a.TempPath = _configuration["TempPath"];
@@ -115,7 +116,10 @@ internal sealed class MmseqsHelperService
 
     private PersistedMonoDatabaseConfiguration GetPersistedMonoConfig()
     {
-        return new PersistedMonoDatabaseConfiguration();
+        return new PersistedMonoDatabaseConfiguration()
+        {
+            LastAccessReporterFilename = "LAST_USED"
+    };
     }
 
     private PersistedA3mDatabaseConfiguration GetPersistedA3mConfig()

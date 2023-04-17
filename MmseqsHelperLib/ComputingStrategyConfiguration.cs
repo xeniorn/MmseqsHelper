@@ -9,4 +9,5 @@ public class ComputingStrategyConfiguration
     public string TempPath { get; set; }
     
     public MmseqsSettings MmseqsSettings { get; set; }
+    public bool ReportSuccessfulUsageOfPersistedDb { get; set; }
 }

@@ -1,8 +1,6 @@
 ﻿using AlphafoldPredictionLib;
 using FastaHelperLib;
 using Microsoft.Extensions.Logging;
-using System.Linq;
-using System.Reflection.Metadata.Ecma335;
 using System.Text;
 
 namespace MmseqsHelperLib;
@@ -73,7 +71,7 @@ public class ColabfoldMmseqsHelper
         var predictionsPerMonomerCount = GroupPredictionsByNumberOfMonomers(missingTargets);
         foreach (var (numberOfMonomers, targetList) in predictionsPerMonomerCount)
         {
-            _logger.LogInformation($"Number of missing predictions containing {numberOfMonomers} unique monomers: {targetList.Count}");
+            _logger.LogInformation($"Number of missing predictions containing {Helper.GetMultimerName(numberOfMonomers)}s: {targetList.Count}");
         }
 
         // all predictions use same mono references (are "rectified"), distinct by reference is ok
@@ -206,6 +204,7 @@ public class ColabfoldMmseqsHelper
             string mmseqsDb = Path.Join(dbLocation, subfolder, persistedDbName);
             // queue up the reads
             resultTasksMapping.Add((dbLocation, Mmseqs.ReadEntriesWithIndicesFromDataDbAsync(mmseqsDb, mmseqsIndicesForProteinsInThisPersistedDb)));
+            
         }
 
         // proceed after all the batched reads are done
@@ -223,7 +222,16 @@ public class ColabfoldMmseqsHelper
                 var protein = locatedFeature.Mono;
                 mutableMonoToDataFragmentMapping.Add(protein, data);
             }
+
+            // fire and forget
+            if (Settings.ComputingConfig.ReportSuccessfulUsageOfPersistedDb) _ = Task.Run(() => ReportMonoDbWasUsedAsync(dbLocation));
         }
+    }
+
+    private async Task ReportMonoDbWasUsedAsync(string monoDbPath)
+    {
+        var reporterFile = Path.Join(monoDbPath, Settings.PersistedMonoDbConfig.LastAccessReporterFilename);
+        await Task.Run(() => Helper.Touch(reporterFile));
     }
 
     private async IAsyncEnumerable<ColabFoldMsaObject> AutoCreateColabfoldMsaObjectsAsync(List<PredictionTarget> predictions, MmseqsDbLocator locator)
@@ -403,7 +411,7 @@ public class ColabfoldMmseqsHelper
         //var predictionsForPairing = GetPredictionsThatRequirePairing(predictionsToExtractDataFor);
         var predictionsForPairing = predictionsToExtractDataFor;
 
-        //TODO: need to separate a qdb that includes pairing and qdb that doesn't use pairing
+        
         //******************************************* generate new qdb *******************************************************
         var predictionToIndicesMapping = GeneratePredictionToIndexMapping(predictionsToExtractDataFor);
         var queryDatabaseForPairing = GenerateQdbForPairing(predictionsToExtractDataFor, predictionToIndicesMapping);
@@ -780,7 +788,7 @@ public class ColabfoldMmseqsHelper
                 var monoIndex = indices[i];
 
                 var data = monoToDataFragmentMappings[protein];
-                mmseqsDbObject.Add(data, monoIndex);
+                mmseqsDbObject.AddData(data, monoIndex);
             }
         }
 
@@ -915,8 +923,8 @@ public class ColabfoldMmseqsHelper
                 var monoIndex = indexList[i];
                 var protein = predictionTarget.UniqueProteins[i];
 
-                qdbDataDbObject.Add(Encoding.ASCII.GetBytes(protein.Sequence), monoIndex);
-                qdbHeaderDbObject.Add(Encoding.ASCII.GetBytes(protein.Id), monoIndex);
+                qdbDataDbObject.AddData(Encoding.ASCII.GetBytes(protein.Sequence + Mmseqs.Settings.Mmseqs2Internal.SequenceEntryHardcodedSuffix), monoIndex);
+                qdbHeaderDbObject.AddData(Encoding.ASCII.GetBytes(protein.Id + Mmseqs.Settings.Mmseqs2Internal.HeaderEntryHardcodedSuffix), monoIndex);
                 qdbLookupObject.Add(monoIndex, protein.Id, generatedPredictionIndex);
             }
 

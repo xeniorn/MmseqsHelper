@@ -158,22 +158,7 @@ public static partial class Helper
         try
         {
             var number = pt.UniqueProteins.Count;
-            switch (number)
-            {
-                case 1: return "monomer";
-                case 2: return "dimer";
-                case 3: return "trimer";
-                case 4: return "tetramer";
-                case 5: return "pentamer";
-                case 6: return "hexamer";
-                case 7: return "heptamer";
-                case 8: return "monomer";
-                case 9: return "9-mer";
-                case 10: return "decamer";
-                case 11: return "11-mer";
-                case 12: return "dodecamer";
-                default: return $"{number}-mer";
-            }
+            return GetMultimerName(number);
         }
         catch (Exception ex)
         {
@@ -194,5 +179,38 @@ public static partial class Helper
         }
 
         return output;
+    }
+
+    public static async Task CreateFileAsync(string file)
+    {
+        await Task.Run(() => File.Create(file));
+    }
+
+    public static void Touch(string fileName)
+    {
+        FileStream myFileStream = File.Open(fileName, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Write);
+        myFileStream.Close();
+        myFileStream.Dispose();
+        File.SetLastWriteTimeUtc(fileName, DateTime.UtcNow);
+    }
+
+    public static string GetMultimerName(int numberOfMonomers)
+    {
+        switch (numberOfMonomers)
+        {
+            case 1: return "monomer";
+            case 2: return "dimer";
+            case 3: return "trimer";
+            case 4: return "tetramer";
+            case 5: return "pentamer";
+            case 6: return "hexamer";
+            case 7: return "heptamer";
+            case 8: return "monomer";
+            case 9: return "9-mer";
+            case 10: return "decamer";
+            case 11: return "11-mer";
+            case 12: return "dodecamer";
+            default: return $"{numberOfMonomers}-mer";
+        }
     }
 }
