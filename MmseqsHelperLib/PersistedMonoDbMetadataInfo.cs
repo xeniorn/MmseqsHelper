@@ -4,9 +4,6 @@ namespace MmseqsHelperLib;
 
 internal class PersistedMonoDbMetadataInfo
 {
-    public PersistedMonoDbMetadataInfo()
-    {
-    }
 
     private static JsonSerializerOptions _jsonSerializerOptions = new()
     {
@@ -41,6 +38,20 @@ internal class PersistedMonoDbMetadataInfo
     {
         await using var stream = File.Create(fullInfoPath);
         await JsonSerializer.SerializeAsync<PersistedMonoDbMetadataInfo>(stream, this, _jsonSerializerOptions);
+    }
+
+    public static async Task<PersistedMonoDbMetadataInfo?> ReadFromFileSystemAsync(string fullInfoFilePath)
+    {
+        await using var stream = File.OpenRead(fullInfoFilePath);
+
+        try
+        {
+            return await JsonSerializer.DeserializeAsync<PersistedMonoDbMetadataInfo>(stream, _jsonSerializerOptions);
+        }
+        catch (Exception ex)
+        {
+            return null;
+        }
     }
 
 }

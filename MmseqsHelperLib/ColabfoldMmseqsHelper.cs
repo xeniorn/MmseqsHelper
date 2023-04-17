@@ -1,6 +1,7 @@
 ﻿using AlphafoldPredictionLib;
 using FastaHelperLib;
 using Microsoft.Extensions.Logging;
+using System.Linq;
 using System.Text;
 
 namespace MmseqsHelperLib;
@@ -8,7 +9,7 @@ namespace MmseqsHelperLib;
 public class ColabfoldMmseqsHelper
 {
     // keep this on top
-    public const string HardcodedColabfoldMmseqsHelperDatabaseVersion = "0.0.2.230416";
+    public const string HardcodedColabfoldMmseqsHelperDatabaseVersion = "0.0.3.230417";
     private readonly ILogger<ColabfoldMmseqsHelper> _logger;
 
     public ColabfoldMmseqsHelper(ColabfoldMmseqsHelperSettings settings, ILogger<ColabfoldMmseqsHelper> logger)
@@ -76,7 +77,7 @@ public class ColabfoldMmseqsHelper
 
         // all predictions use same mono references (are "rectified"), distinct by reference is ok
         var allMonos = missingTargets.SelectMany(x => x.UniqueProteins).Distinct().ToList();
-        var (existingMonos, missingMonos) = await GetExistingAndMissingSetsAsync(allMonos, filteredPersistedMonoDbPaths);
+        var (existingMonos, missingMonos) = await GetExistingAndMissingProteinsAsync(allMonos, filteredPersistedMonoDbPaths);
 
         if (existingMonos.Any())
         {
@@ -120,7 +121,7 @@ public class ColabfoldMmseqsHelper
     {
         var excludedIdList = excludedIds.ToList();
         var persistedMonoDbPaths = await GetDbEntryFoldersAsync(persistedMonoDatabaseParentFolderLocations.ToList());
-
+        
         var uniqueTargets = await GetProteinTargetsForMonoDbSearchAsync(inputFastaPaths, excludedIdList);
         var requiredFeatures = GetRequiredMonoDbFeaturesForTargets(uniqueTargets);
 
@@ -155,6 +156,7 @@ public class ColabfoldMmseqsHelper
         }
     }
 
+  
     /// <summary>
     /// Append the mutable dictionary by all the data fragments for relevant features. Will read e.g. 20 persisted mono db locations at once for presence of
     /// (for_pair_align or unpaired) data, depending on input, that belongs to the target source database (read from features?).
@@ -341,9 +343,7 @@ public class ColabfoldMmseqsHelper
 
         //don't think distinct works, it will probably deserialize to separate objects even if the same
         var dbTargetsInResult = persistedA3mInfo.MsaOriginDefinitions.Select(x => x.SourceDatabaseTarget).Distinct().ToList();
-
-        var a = dbTargetsInResult;
-
+        
         // if any database target is not fully fitting, the result doesn't fit
         foreach (var dbTarget in MmseqsSourceDatabaseTargets)
         {
@@ -1012,7 +1012,7 @@ public class ColabfoldMmseqsHelper
             targetDbPathAln,
             expandResultDb
         };
-        await Mmseqs.RunMmseqsAsync(Mmseqs.expandModule, expandPosParams, $"{Settings.ColabfoldMmseqsParamsUnpairedSpecialForReferenceDb.Align} {performanceParams}");
+        await Mmseqs.RunMmseqsAsync(Mmseqs.expandModule, expandPosParams, $"{Settings.ColabfoldMmseqsParamsUnpairedSpecialForReferenceDb.Expand} {performanceParams}");
 
         //*******************************************align*******************************************************
         var alignResultDb = Path.Join(localProcessingPath, $"align");
@@ -1168,26 +1168,30 @@ public class ColabfoldMmseqsHelper
     }
 
     //TODO: check versions of monos too, not just final a3ms!
-    private async Task<(List<Protein> existing, List<Protein> missing)> GetExistingAndMissingSetsAsync(IEnumerable<Protein> iproteins, IEnumerable<string> existingDatabaseLocations)
+    private async Task<(List<Protein> existing, List<Protein> missing)> GetExistingAndMissingProteinsAsync(List<Protein> iproteins, List<string> existingDatabaseLocations)
     {
-        var proteins = new List<Protein>(iproteins);
+        var proteinsToCheck = new List<Protein>(iproteins);
         var existing = new List<Protein>();
 
         foreach (var existingDatabasePath in existingDatabaseLocations)
         {
-            if (!proteins.Any()) break;
+            if (!proteinsToCheck.Any()) break;
 
             //TODO: many checks - whether the sequence matches, whether the other stuff apart from qdb exists, ...
             var qdbHeaderDb = Path.Join(existingDatabasePath, Settings.PersistedMonoDbConfig.QdbName) +
                               $"{Mmseqs.Settings.Mmseqs2Internal.DbHeaderSuffix}";
 
+            
+
+            
+
             var headers = await Mmseqs.GetAllHeadersInSequenceDbHeaderDbAsync(qdbHeaderDb);
-            var contained = proteins.Where(x => headers.Contains(Helper.GetMd5Hash(x.Sequence))).ToList();
+            var contained = proteinsToCheck.Where(x => headers.Contains(Helper.GetMd5Hash(x.Sequence))).ToList();
             existing.AddRange(contained);
-            proteins = proteins.Except(existing).ToList();
+            proteinsToCheck = proteinsToCheck.Except(existing).ToList();
         }
 
-        var missing = proteins.Except(existing).ToList();
+        var missing = proteinsToCheck.Except(existing).ToList();
 
         return (existing, missing);
     }
@@ -1424,6 +1428,44 @@ public class ColabfoldMmseqsHelper
     /// <param name="target"></param>
     /// <param name="fullPredictionPathToCheckForResults"></param>
     /// <returns></returns>
+    private async IAsyncEnumerable<string> GetResultFoldersWithDesiredResultAsync(Protein target, string persistedMonoLocation)
+    {
+        var subFolders = await Helper.GetDirectoriesAsync(persistedMonoLocation);
+        if (!subFolders.Any()) yield break;
+
+        foreach (var resultFolder in subFolders)
+        {
+            //if (await Helper.FilesExistParallelAsync())
+
+            var expectedInfoFilePath = Path.Join(resultFolder, Settings.PersistedA3mDbConfig.A3mInfoFilename);
+            if (!File.Exists(expectedInfoFilePath)) continue;
+
+            var expectedMsaFilePath = Path.Join(resultFolder, Settings.PersistedA3mDbConfig.ResultA3mFilename);
+            if (!File.Exists(expectedMsaFilePath)) continue;
+
+            bool isAcceptable;
+            try
+            {
+                isAcceptable = false; // await CheckIsAcceptablePersistedA3mResultForTargetAsync(target, expectedInfoFilePath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Error while checking {expectedInfoFilePath}, skipping.");
+                continue;
+            }
+
+            if (isAcceptable) yield return resultFolder;
+
+        }
+    }
+
+    /// <summary>
+    /// Result location for a prediction can have multiple results in it for different combos of inputs. This will get all that fit the input target
+    /// and the settings of the current program instance
+    /// </summary>
+    /// <param name="target"></param>
+    /// <param name="fullPredictionPathToCheckForResults"></param>
+    /// <returns></returns>
     private async IAsyncEnumerable<string> GetResultFoldersWithDesiredResultAsync(PredictionTarget target, string fullPredictionPathToCheckForResults)
     {
         var subFolders = await Helper.GetDirectoriesAsync(fullPredictionPathToCheckForResults);
@@ -1454,83 +1496,7 @@ public class ColabfoldMmseqsHelper
 
         }
     }
-
-    private async Task<(List<MmseqsPersistedMonoDbEntryFeature> missingFeatures, List<MmseqsPersistedMonoDbEntryFeature> usableFeatures)>
-        GetUsableAndMissingFeaturesAsync(List<string> persistedMonoDatabasesPaths, List<Protein> predictionBatch, int existingDbParallelSearchBatchSize)
-    {
-        var requiredFeatures = GetRequiredMonoDbFeaturesForTargets(predictionBatch);
-
-        var searchBatches = GetBatches<string>(persistedMonoDatabasesPaths, existingDbParallelSearchBatchSize);
-        foreach (var searchBatch in searchBatches)
-        {
-            var featuresToBeFound =
-                requiredFeatures.Where(x => !string.IsNullOrWhiteSpace(x.FeatureSubFolderPath)).ToList();
-            var monosThatStillNeedToBeFound = featuresToBeFound.Select(x => x.Mono).Distinct().ToList();
-
-            var monoToLocationsMapping =
-                await GetMonoToDbAndIndexMappingsForSearchBatch(searchBatch, monosThatStillNeedToBeFound);
-
-            var foundMonos = monoToLocationsMapping.Select(x => x.Key).ToList();
-            foreach (var feature in featuresToBeFound.Where(x => foundMonos.Contains(x.Mono)))
-            {
-                var locationsContainingMono = monoToLocationsMapping[feature.Mono].Select(x => x.dbLocation);
-                foreach (var location in locationsContainingMono)
-                {
-                    var subFoldersInLocation = await Helper.GetDirectoriesAsync(location);
-                    var expectedSubFolder = feature.DatabaseName;
-                    var matchingSubFolders = subFoldersInLocation.Where(x =>
-                        Helper.GetStandardizedDbName(Path.GetFileName(x)) ==
-                        Helper.GetStandardizedDbName(expectedSubFolder)).ToList();
-
-                    if (matchingSubFolders.Any())
-                    {
-                        if (matchingSubFolders.Count > 1)
-                        {
-                            _logger.LogWarning($"Something is weird with folder naming in ({location})");
-                            if (Settings.Strategy.SuspiciousData == SuspiciousDataStrategy.PlaySafe)
-                            {
-                                _logger.LogWarning($"Will not use it.");
-                                continue;
-                            }
-                        }
-
-                        var subFolderForTargetDatabase = matchingSubFolders.First();
-                        var subPath = Path.Join(location, subFolderForTargetDatabase);
-                        string requiredDbName;
-                        switch (feature.SourceType)
-                        {
-                            case ColabfoldMsaDataType.Unpaired:
-                                requiredDbName = Settings.PersistedMonoDbConfig.MonoA3mDbName;
-                                break;
-                            case ColabfoldMsaDataType.Paired:
-                                requiredDbName = Settings.PersistedMonoDbConfig.ForPairingAlignDbName;
-                                break;
-                            default:
-                                throw new Exception("This should never happen.");
-                        }
-
-                        var requiredDbFileName = $"{requiredDbName}{Mmseqs.Settings.Mmseqs2Internal.DbTypeSuffix}";
-
-                        var files = await Helper.GetFilesAsync(subPath);
-                        if (files.Any(x => Path.GetFileName(x) == requiredDbFileName))
-                        {
-                            feature.DbPath = location;
-                            feature.FeatureSubFolderPath = subFolderForTargetDatabase;
-                            feature.Indices = monoToLocationsMapping[feature.Mono].Single(x => x.dbLocation == location)
-                                .qdbIndices;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        var missingFeatures = requiredFeatures.Where(x => string.IsNullOrWhiteSpace(x.FeatureSubFolderPath)).ToList();
-        var usableFeatures = requiredFeatures.Except(missingFeatures).ToList();
-
-        return (missingFeatures, usableFeatures);
-    }
-
+    
     private async Task<(List<MmseqsPersistedMonoDbEntryFeature> missingFeatures, List<MmseqsPersistedMonoDbEntryFeature> usableFeatures)>
         GetUsableAndMissingFeaturesAsync(List<string> persistedMonoDatabasesPaths, List<MmseqsPersistedMonoDbEntryFeature> requiredFeatures, int existingDbParallelSearchBatchSize)
     {
@@ -1627,10 +1593,73 @@ public class ColabfoldMmseqsHelper
 
     private async Task<bool> IsValidDbFolder(string path)
     {
+        //TODO: instead of true-false, return a judgement enum, so I can report on the reason the folders weren't valid, count, etc
+
         if (!Directory.Exists(path)) return false;
-        var files = (await Helper.GetFilesAsync(path));
+        
+        var files = await Helper.GetFilesAsync(path);
         if (files.Length < Settings.PersistedMonoDbConfig.MinimalNumberOfFilesInResultFolder) return false;
-        if (!files.Select(Path.GetFileName).Contains(Settings.PersistedMonoDbConfig.InfoFilename)) return false;
+        
+        if (!files.Any(x=> Path.GetFileName(x) == Settings.PersistedMonoDbConfig.InfoFilename)) return false;
+        
+        var infoFilePath = files.Single(x => Path.GetFileName(x) == Settings.PersistedMonoDbConfig.InfoFilename);
+        var x = await PersistedMonoDbMetadataInfo.ReadFromFileSystemAsync(infoFilePath);
+        if (x is null)
+        {
+            _logger.LogInformation($"Unable to load the database info for {infoFilePath}, skipping.");
+            return false;
+        }
+
+        var persistedMonoDbInfo = x!;
+        if (!IsPersistedMmseqsDatabaseVersionCompatible(persistedMonoDbInfo.MmseqsHelperDatabaseVersion))
+        {
+            _logger.LogInformation($"Mono db at ({path}) incompatible version ({persistedMonoDbInfo.MmseqsHelperDatabaseVersion}) vs current ({HelperDatabaseVersion}).");
+            return false;
+        }
+
+        // just exploring a bit how structured issue policy implementation might look like... Seems to take a lot of work. And space... 2023-04-17
+        if (persistedMonoDbInfo.MmseqsVersion != MmseqsVersion)
+        {
+            var message =
+                $"Version of Mmseqs in persisted db ({persistedMonoDbInfo.MmseqsVersion}) and current ({MmseqsVersion}) do not match.";
+            var policy = Settings.Strategy.MmseqsVersionOfPersistedDatabaseIsLowerThanRunningVersion;
+            if (policy.ActionsRequsted.Contains(IssueHandlingAction.Report))
+            {
+                var logLevel = policy.GetValueOrDefault<LogLevel>("LogLevel", LogLevel.Warning);
+                _logger.Log(logLevel, message);
+            }
+
+            if (policy.ActionsRequsted.Contains(IssueHandlingAction.SkipCurrentItem))
+            {
+                _logger.LogInformation("Will not use it.");
+                return false;
+            }
+
+            if (policy.ActionsRequsted.Contains(IssueHandlingAction.StopProcessing) ||
+                policy.ActionsRequsted.Contains(IssueHandlingAction.KillProgram))
+            {
+                throw new Exception(message);
+            }
+        }
+
+        //don't think distinct works, it will probably deserialize to separate objects even if the same
+        var dbTargetsInResult = persistedMonoDbInfo.DatabaseTargets;
+
+        // if the database contains anything useful, might be fitting
+        foreach (var dbTarget in MmseqsSourceDatabaseTargets)
+        {
+            var matchingDbInPersistedResult = dbTargetsInResult.Where(x =>
+            {
+                var nameFits = x.Database?.Name?.Equals(dbTarget.Database.Name, StringComparison.OrdinalIgnoreCase) == true;
+                var pairingFits = x.UseForPaired == dbTarget.UseForPaired;
+                var unpairedFits = x.UseForUnpaired == dbTarget.UseForUnpaired;
+                return nameFits && (pairingFits || unpairedFits);
+            });
+
+            if (!matchingDbInPersistedResult.Any()) return false;
+        }
+
+        // failed to find a reason for it to be invalid
         return true;
     }
 
