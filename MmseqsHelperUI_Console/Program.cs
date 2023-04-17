@@ -24,17 +24,18 @@ internal sealed class Program
             new MmseqsHelperModeGenerateMonoDbs("auto-mono"),
             new MmseqsHelperModeGenerateA3mFilesForColabfold("auto-pair"),
         };
-        
+
         var configs = new List<string> { DefaultConfigFileName };
-        
+
         //if (!args.Any())
         //{
         //    Console.WriteLine(selectedMode.GetHelpString(DefaultEnvVarPrefix, DefaultConfigFileName));
         //    return;
         //}
 
-        var selectedMode = allowedModes.SingleOrDefault(x => x.VerbString == args.FirstOrDefault()) ?? MmseqsHelperMode.Null;
-        
+        var selectedMode = allowedModes.SingleOrDefault(x => x.VerbString == args.FirstOrDefault()) ??
+                           MmseqsHelperMode.Null;
+
         // help fallback
         if (!args.Any() || args.Any(x => HelpArgs.Contains(x)))
         {
@@ -51,9 +52,11 @@ internal sealed class Program
             }
             else
             {
-                await File.WriteAllTextAsync(DefaultConfigFileName, Helper.GetConfigJsonFromDefaults(selectedMode.GetDefaults()));
+                await File.WriteAllTextAsync(DefaultConfigFileName,
+                    Helper.GetConfigJsonFromDefaults(selectedMode.GetDefaults()));
                 Console.WriteLine($"Default config {DefaultConfigFileName} created.");
             }
+
             return;
         }
 
@@ -71,28 +74,27 @@ internal sealed class Program
                 throw new ArgumentException($"Too many configuration files provided, {maxConfigs} allowed.");
             }
         }
-        
+
         var defaultConfig = selectedMode.GetDefaults().Where(x => !x.Value.required)
             .Select(x => new KeyValuePair<string, string>(x.Key, x.Value.defaultValue)).ToList();
 
         var hostBuilder = SetUpHostBuilder(configs, args, defaultConfig);
 
-#if DEBUG
-
-        hostBuilder.ConfigureAppConfiguration(builder =>
-        {
-            if (selectedMode.Process == MmseqsAutoProcess.GenerateA3mFilesForColabfold)
+        if (false)
+            hostBuilder.ConfigureAppConfiguration(builder =>
             {
-                //builder.AddInMemoryCollection(new List<KeyValuePair<string, string>>()
-                //{
-                //    new("InputFastaPaths",@"C:\temp\mmseqs_test\input.fasta"),
-                //    new("PersistedMonoDatabasePaths",@"C:\temp\mmseqs_test\result_db"),
-                //    new("OutputPath",@"C:\temp\mmseqs_test\out" )
-                //});
-            }
-        });
+                if (selectedMode.Process == MmseqsAutoProcess.GenerateA3mFilesForColabfold)
+                {
+                    //builder.AddInMemoryCollection(new List<KeyValuePair<string, string>>()
+                    //{
+                    //    new("InputFastaPaths",@"C:\temp\mmseqs_test\input.fasta"),
+                    //    new("PersistedMonoDatabasePaths",@"C:\temp\mmseqs_test\result_db"),
+                    //    new("OutputPath",@"C:\temp\mmseqs_test\out" )
+                    //});
+                }
+            });
 
-#endif
+
 
         var host = hostBuilder.Build();
         var program = host.Services.GetRequiredService<MmseqsHelperService>();

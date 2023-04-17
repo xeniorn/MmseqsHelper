@@ -706,6 +706,7 @@ public class ColabfoldMmseqsHelper
 
         var infoPath = Path.Join(outDir, Settings.PersistedMonoDbConfig.InfoFilename);
         await info.WriteToFileSystemAsync(infoPath);
+        _logger.LogInformation($"Database info file: {infoPath}");
 
     }
 
@@ -1199,7 +1200,7 @@ public class ColabfoldMmseqsHelper
     private string GetMmseqsVersion()
     {
         // shady. TODO: rethink this
-#if DEBUG
+#if DEBUGx
         return "fake_version_1.0.0";
 #else
         return Mmseqs.GetVersionAsync().GetAwaiter().GetResult();

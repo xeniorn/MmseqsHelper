@@ -74,7 +74,29 @@ namespace MmseqsHelperLib
             await RunMmseqsAsync(mmseqsModule, positionalArguments, parametersString);
         }
 
-        public async Task<(string stdout, string strderr)> GetMmseqsResponseAsync(string mmseqsModule, IEnumerable<string> positionalArguments, string nonPositionalParametersString)
+        public async Task<string> GetMmseqsResponseAsync(string mmseqsModule, IEnumerable<string> positionalArguments, string nonPositionalParametersString)
+        {
+            var fullFilePath = Helper.EnsureQuotedIfWhiteSpace(Settings.MmseqsBinaryPath);
+            var positionalArgumentsString = String.Join(" ", positionalArguments.Select(Helper.EnsureQuotedIfWhiteSpace));
+            var processArgumentsString = $"{mmseqsModule} {positionalArgumentsString} {nonPositionalParametersString}";
+
+            LogSomething($"{fullFilePath} {processArgumentsString}");
+
+            using var outStream = new MemoryStream();
+            using var errStream = new MemoryStream();
+
+            var (exitCode, output)  = await Helper.RunProcessAndGetStdoutAsync(fullFilePath, processArgumentsString);
+
+            const int successExit = 0;
+            if (exitCode != successExit)
+                throw new Exception(
+                    $"Return: {exitCode}. Failed to run mmseqs {fullFilePath}; {processArgumentsString}.");
+
+            return output;
+        }
+
+
+        public async Task<(string stdout, string strderr)> Deprecated_GetMmseqsResponseAsync(string mmseqsModule, IEnumerable<string> positionalArguments, string nonPositionalParametersString)
         {
             var fullFilePath = Helper.EnsureQuotedIfWhiteSpace(Settings.MmseqsBinaryPath);
             var positionalArgumentsString = String.Join(" ", positionalArguments.Select(Helper.EnsureQuotedIfWhiteSpace));
@@ -372,7 +394,7 @@ namespace MmseqsHelperLib
         public async Task<string> GetVersionAsync()
         {
             var response = await GetMmseqsResponseAsync(versionModule, new List<string>(), string.Empty);
-            return response.stdout;
+            return response.Trim();
         }
     }
 }

@@ -15,22 +15,33 @@ public static partial class Helper
         }
     }
 
+    /// <summary>
+    /// (!!!!!!!!!!!!!!) Redirecting io streams doesn't seem to work yet
+    /// </summary>
+    /// <param name="fileName"></param>
+    /// <param name="args"></param>
+    /// <param name="liveIoStreams"></param>
+    /// <returns></returns>
     public static async Task<int> RunProcessAsync(string fileName, string args,
-        (Stream? output, Stream? error)? outStreams = null)
+        (Stream? output, Stream? error)? liveIoStreams = null)
     {
-        using var process = new Process
+        var useOut = (liveIoStreams?.output is not null);
+        var useErr = (liveIoStreams?.error is not null);
+
+        using var process = new Process()
         {
             StartInfo =
             {
                 FileName = fileName, Arguments = args,
                 UseShellExecute = false, CreateNoWindow = true,
-                RedirectStandardOutput = (outStreams?.output is not null),
-                RedirectStandardError = (outStreams?.error is not null)
+                RedirectStandardOutput = useOut,
+                RedirectStandardError = useErr,
+                RedirectStandardInput =  false //useOut || useErr, - someone said this would fix it not working but it didn't
             },
             EnableRaisingEvents = true
         };
 
-        return await RunProcessAsync(process).ConfigureAwait(false);
+        return await RunProcessAsync(process, liveIoStreams?.output, liveIoStreams?.error); //.ConfigureAwait(false);
     }
 
     private static Task<int> RunProcessAsync(Process process, Stream? outStream = null, Stream? errStream = null)
@@ -212,5 +223,31 @@ public static partial class Helper
             case 12: return "dodecamer";
             default: return $"{numberOfMonomers}-mer";
         }
+    }
+
+    public static async Task<(int exitCode, string output)> RunProcessAndGetStdoutAsync(string fileName, string args)
+    {
+        var useOut = true;
+        var useErr = true;
+
+        using var process = new Process()
+        {
+            StartInfo =
+            {
+                FileName = fileName, 
+                Arguments = args,
+                UseShellExecute = false, 
+                CreateNoWindow = true,
+                RedirectStandardOutput = useOut,
+                RedirectStandardError = useErr,
+                RedirectStandardInput =  false //useOut || useErr, - someone said this would fix it not working but it didn't
+            },
+        };
+
+        process.Start();
+        var output = await process.StandardOutput.ReadToEndAsync();
+        await process.WaitForExitAsync();
+
+        return (process.ExitCode,  output);
     }
 }
