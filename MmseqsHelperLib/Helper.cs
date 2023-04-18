@@ -295,4 +295,12 @@ public static partial class Helper
 
         return (process.ExitCode,  output);
     }
+
+    public static string GetPathOfFirstNSubpathLevels(string path, int subpathLevels)
+    {
+        var startThing = string.Join("",path.TakeWhile(x => x == Path.DirectorySeparatorChar));
+
+        var subpaths = path.Substring(startThing.Length,path.Length - startThing.Length).Split(Path.DirectorySeparatorChar);
+        return startThing + string.Join(Path.DirectorySeparatorChar, subpaths.Take(subpathLevels));
+    }
 }

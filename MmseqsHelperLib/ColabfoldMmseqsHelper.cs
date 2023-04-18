@@ -1270,23 +1270,60 @@ public class ColabfoldMmseqsHelper
                 continue;
             }
 
-            // TODO: parallelize this, this is many disk reads that can work together
-            foreach (var (target, subpath) in resultsLocationMappingToTest)
-            {
-                var expectedPredictionTargetResultsPath = Path.Join(location, subpath);
-                if (!Directory.Exists(expectedPredictionTargetResultsPath)) continue;
+            List<(PredictionTarget target, string subpath)> locallyFeasibleMappings = new(resultsLocationMappingToTest);
 
-                await foreach (var desiredResultFolder in GetResultFoldersWithDesiredResultAsync(target,
-                                   expectedPredictionTargetResultsPath))
+            // progressively remove larger and larger groups based on test whether its cognate subfolder exists, instead of checking all one by one
+            // this helps with nonexisting only
+            const int longestAcceptableSublevel = 4;
+            const int maxNumberOfPrechecks = 2;
+            var numberOfAcceptablyShortLevels = Settings.PersistedA3mDbConfig.FolderOrganizationFragmentLengths.Where(x=>x <= longestAcceptableSublevel).ToList().Count;
+            numberOfAcceptablyShortLevels = Math.Min(numberOfAcceptablyShortLevels, maxNumberOfPrechecks);
+            for (int subfolderCount = 1; subfolderCount <= numberOfAcceptablyShortLevels; subfolderCount++ )
+            {
+                var subpaths = locallyFeasibleMappings.Select(x=>Helper.GetPathOfFirstNSubpathLevels(x.subpath, subfolderCount)).Distinct().ToList();
+                foreach (var subpath in subpaths)
                 {
-                    var firstResult = desiredResultFolder;
-                    targetToFullResultMapping[target] = firstResult;
-                    break;
+                    var expectedPredictionTargetResultsPath = Path.Join(location, subpath);
+                    if (!Directory.Exists(expectedPredictionTargetResultsPath))
+                    {
+                        locallyFeasibleMappings.RemoveAll(x => x.subpath.StartsWith(subpath));
+                    }
+                    if (!locallyFeasibleMappings.Any()) break;
                 }
+                if (!locallyFeasibleMappings.Any()) break;
             }
 
-            var alreadyFound = targetToFullResultMapping.Select(x => x.Key).ToList();
-            resultsLocationMappingToTest.RemoveAll(x => alreadyFound.Contains(x.target));
+            if (!locallyFeasibleMappings.Any()) continue;
+
+            // TODO: parallelize this, this is many disk reads that can work together
+
+            var parallel = Settings.ComputingConfig.ExistingDatabaseSearchParallelizationFactor;
+            var batches = GetBatches(locallyFeasibleMappings, parallel);
+            
+            foreach (var batch in batches)
+            {
+                var taskMapping = new List<(PredictionTarget target, Task<string?> task)>();
+                foreach (var (target, subpath) in batch)
+                {
+                    var expectedPredictionTargetResultsPath = Path.Join(location, subpath);
+                    var task = GetResultFolderWithDesiredResultAsync(target, expectedPredictionTargetResultsPath);
+                    taskMapping.Add((target, task));
+                }
+
+                try
+                {
+                    await Task.WhenAll(taskMapping.Select(x => x.task));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("Error while checking some of the existing locations.");
+                }
+
+                var found = taskMapping.Where(x => x.task.IsCompletedSuccessfully && x.task.Result is not null)
+                    .Select(x => x.target);
+
+                resultsLocationMappingToTest.RemoveAll(x=>found.Contains(x.target));
+            }
         }
 
     // ########################################################
@@ -1600,6 +1637,20 @@ public class ColabfoldMmseqsHelper
             if (isAcceptable) yield return resultFolder;
 
         }
+    }
+
+    private async Task<string?> GetResultFolderWithDesiredResultAsync(PredictionTarget target, string fullPredictionPath)
+    {
+        if (!Directory.Exists(fullPredictionPath)) return null;
+
+        await foreach (var desiredResultFolder in GetResultFoldersWithDesiredResultAsync(target, fullPredictionPath))
+        {
+            var firstResult = desiredResultFolder;
+            return firstResult;
+        }
+
+        return null;
+
     }
 
     /// <summary>
