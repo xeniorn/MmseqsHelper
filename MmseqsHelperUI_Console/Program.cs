@@ -142,7 +142,9 @@ internal sealed class Program
 
         hostBuilder.ConfigureLogging((context, cfg) =>
         {
-
+#if DEBUG
+            cfg.SetMinimumLevel(LogLevel.Trace);
+#endif
             cfg.AddSimpleConsole(options =>
             {
                 options.SingleLine = true;

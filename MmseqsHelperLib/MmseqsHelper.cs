@@ -266,12 +266,27 @@ namespace MmseqsHelperLib
             var entries = await GetAllIndexFileEntriesInDbAsync(dbIndexFile);
             
             var emptyEntryLength = Settings.Mmseqs2Internal.DataEntryTerminator.Length;
-            var orderedEntriesToRead = entries
-                .Where(x => 
-                    indices.Contains(x.Index) 
-                    && x.Length > emptyEntryLength)
-                .OrderBy(x => x.StartOffset).ToList();
 
+            List<MmseqsIndexEntry> orderedEntriesToRead;
+
+            // need not to skip empty stuff because an empty entry also has a meaning ("no results") - different from absence of entry!
+            const bool defaultSkipEmpty = false;
+
+            if (defaultSkipEmpty)
+            {
+                orderedEntriesToRead = entries
+                    .Where(x =>
+                        indices.Contains(x.Index)
+                        && x.Length > emptyEntryLength)
+                    .OrderBy(x => x.StartOffset).ToList();
+            }
+            else
+            {
+                orderedEntriesToRead = entries
+                    .Where(x =>
+                        indices.Contains(x.Index))
+                    .OrderBy(x => x.StartOffset).ToList();
+            }
             var dbDataFile = $"{dataDbPath}{Settings.Mmseqs2Internal.DbDataSuffix}";
 
             using BinaryReader reader = new BinaryReader(new FileStream(dbDataFile, FileMode.Open));

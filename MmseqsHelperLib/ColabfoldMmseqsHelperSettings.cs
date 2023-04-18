@@ -49,6 +49,7 @@ public class ColabfoldMmseqsHelperSettings
     public SearchDatabasesConfiguration SearchDatabasesConfig { get; init; }
     
     public IssueHandlingStrategy Strategy { get; init; }
+    public Dictionary<string,List<string>> DatabaseVersionCompatibilityMatrix { get; init; } = new ();
 
     public string ToJson()
     {

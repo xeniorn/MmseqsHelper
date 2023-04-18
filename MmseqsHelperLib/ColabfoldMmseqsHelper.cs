@@ -2,8 +2,10 @@
 using FastaHelperLib;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Text;
+using System.Xml.XPath;
 
 namespace MmseqsHelperLib;
 
@@ -64,7 +66,11 @@ public class ColabfoldMmseqsHelper
         _logger.LogInformation($"Found {filteredPersistedMonoDbPaths.Count} valid sources of mono predictions. Will proceed.");
 
         // rectify all targets, giving them standard ordering, capitalization, and referencing the same set of Protein instances
+        _logger.LogInformation("Getting a list of protein targets from inputs...");
         var rectifiedPredictionTargets = await GetRectifiedTargetPredictionsAsync(inputPathsList, excludedHashList);
+        _logger.LogInformation($"{rectifiedPredictionTargets.Count} unique targets found.");
+
+        _logger.LogInformation($"Checking if any targets have existing predictions...");
         var (existingTargets, missingTargets) = await GetExistingAndMissingPredictionTargetsAsync(rectifiedPredictionTargets, persistedA3mPathsList);
 
         if (!missingTargets.Any())
@@ -83,6 +89,7 @@ public class ColabfoldMmseqsHelper
             _logger.LogInformation($"Number of missing predictions containing {Helper.GetMultimerName(numberOfMonomers)}s: {targetList.Count}");
         }
 
+        _logger.LogInformation($"Checking for presence of precalculated mono dbs required for final MSA assembly...");
         // all predictions use same mono references (are "rectified"), distinct by reference is ok
         var allMonos = missingTargets.SelectMany(x => x.UniqueProteins).Distinct().ToList();
         var (existingMonos, missingMonos) = await GetExistingAndMissingProteinsAsync(allMonos, filteredPersistedMonoDbPaths);
@@ -110,18 +117,45 @@ public class ColabfoldMmseqsHelper
             return;
         }
 
-        _logger.LogInformation($"Will attempt to generate MSA results for {predictableTargets.Count} targets.");
+        _logger.LogInformation($"Will attempt to generate MSA results for ({predictableTargets.Count}/{missingTargets.Count}) targets.");
 
         var allSuccessful = new List<PredictionTarget>();
 
         var batches = GetBatches(predictableTargets, Settings.ComputingConfig.MaxDesiredPredictionTargetBatchSize);
+        _logger.LogInformation($"Inputs split into {batches.Count} batches.");
         foreach (var targetBatch in batches)
         {
-            var successfulList = await GenerateA3msFromFastasGivenExistingMonoDbsAsync(outputPath, filteredPersistedMonoDbPaths, targetBatch);
-            allSuccessful.AddRange(successfulList);
+            try
+            {
+                var successfulList =
+                    await GenerateA3msFromFastasGivenExistingMonoDbsAsync(outputPath, filteredPersistedMonoDbPaths,
+                        targetBatch);
+                allSuccessful.AddRange(successfulList);
+            }
+            catch (Exception ex)
+            {
+                var policy = Settings.Strategy.ProcessingBatchFailedCatastrophically;
+                var message = $"Exception thrown while processing batch.";
+                if (policy.ActionsRequsted.Contains(IssueHandlingAction.Report))
+                {
+                    _logger.LogError(message);
+                }
+                if (policy.ActionsRequsted.Contains(IssueHandlingAction.SkipCurrentItem))
+                {
+                    continue;
+                }
+                if (policy.ActionsRequsted.Contains(IssueHandlingAction.StopProcessing))
+                {
+                    break;
+                }
+                if (policy.ActionsRequsted.Contains(IssueHandlingAction.KillProgram))
+                {
+                    throw new Exception(message);
+                }
+            }
         }
 
-        _logger.LogInformation($"Number of MSA predictions carried out: {allSuccessful.Count}");
+        _logger.LogInformation($"Number of MSA predictions carried out: {allSuccessful.Count}/{predictableTargets.Count}");
 
     }
 
@@ -214,14 +248,25 @@ public class ColabfoldMmseqsHelper
             string mmseqsDb = Path.Join(dbLocation, dbTargetSubfolder, persistedDbName);
             // queue up the reads
             resultTasksMapping.Add((dbLocation, Mmseqs.ReadEntriesWithIndicesFromDataDbAsync(mmseqsDb, mmseqsIndicesForProteinsInThisPersistedDb)));
-            
         }
 
         // proceed after all the batched reads are done
-        await Task.WhenAll(resultTasksMapping.Select(x => x.resultTask));
+        var tasks = resultTasksMapping.Select(x => x.resultTask).ToList();
+        try
+        {
+            await Task.WhenAll(tasks);
+        }
+        catch (Exception ex)
+        {
+            var exceptions = tasks.Where(x => x.Exception is not null).ToList();
+            if (exceptions.Any())
+            {
+                _logger.LogWarning($"Reading entries from some locations ({exceptions.Count}/{tasks.Count}) failed unexpectedly.");
+            }
+        }
 
         // now, combine all of these into the actual dict we want, where it's mapped to proteins, not mmseqs db indices like before
-        foreach (var (dbLocation, resultTask) in resultTasksMapping)
+        foreach (var (dbLocation, resultTask) in resultTasksMapping.Where(x=>x.resultTask.IsCompletedSuccessfully))
         {
             var featuresInThisPersistedDb = preprocessedFeatures
                 .Where(x => x.DbPath == dbLocation).ToList();
@@ -250,45 +295,78 @@ public class ColabfoldMmseqsHelper
 
         foreach (var predictionTarget in predictions)
         {
-            List<AnnotatedMsaData> dataEntries = new List<AnnotatedMsaData>();
-
-            var qdbIndices = locator.QdbIndicesMapping[predictionTarget];
-
-            foreach (var dbTarget in MmseqsSourceDatabaseTargets)
+            ColabFoldMsaObject msaObj;
+            try
             {
-                var pairedDataCollection = dbTarget.UseForPaired ?
-                    await Mmseqs.ReadEntriesWithIndicesFromDataDbAsync(locator.PairedA3mDbPathMapping[dbTarget], qdbIndices) : null;
-                var unpairedDataCollection = dbTarget.UseForUnpaired ?
-                    await Mmseqs.ReadEntriesWithIndicesFromDataDbAsync(locator.UnPairedA3mDbPathMapping[dbTarget], qdbIndices) : null;
+                List<AnnotatedMsaData> dataEntries = new List<AnnotatedMsaData>();
 
-                var unpairedDataDict = new Dictionary<Protein, byte[]>();
-                var pairedDataDict = new Dictionary<Protein, byte[]>();
+                var qdbIndices = locator.QdbIndicesMapping[predictionTarget];
 
-                // TODO: fix this, it's loading stuff part by part while the info expects en-block for each dbTarget
-                for (int i = 0; i < predictionTarget.UniqueProteins.Count; i++)
+                foreach (var dbTarget in MmseqsSourceDatabaseTargets)
                 {
-                    var protein = predictionTarget.UniqueProteins[i];
+                    var pairedDataCollection = dbTarget.UseForPaired
+                        ? await Mmseqs.ReadEntriesWithIndicesFromDataDbAsync(locator.PairedA3mDbPathMapping[dbTarget],
+                            qdbIndices)
+                        : null;
+                    var unpairedDataCollection = dbTarget.UseForUnpaired
+                        ? await Mmseqs.ReadEntriesWithIndicesFromDataDbAsync(locator.UnPairedA3mDbPathMapping[dbTarget],
+                            qdbIndices)
+                        : null;
 
-                    if (dbTarget.UseForUnpaired)
+                    var unpairedDataDict = new Dictionary<Protein, byte[]>();
+                    var pairedDataDict = new Dictionary<Protein, byte[]>();
+
+                    // TODO: fix this, it's loading stuff part by part while the info expects en-block for each dbTarget
+                    for (int i = 0; i < predictionTarget.UniqueProteins.Count; i++)
                     {
-                        var unpairedData = unpairedDataCollection!.Single(x => x.index == qdbIndices[i]).data;
-                        unpairedDataDict.Add(protein, unpairedData);
+                        var protein = predictionTarget.UniqueProteins[i];
+
+                        if (dbTarget.UseForUnpaired)
+                        {
+                            var unpairedData = unpairedDataCollection!.Single(x => x.index == qdbIndices[i]).data;
+                            unpairedDataDict.Add(protein, unpairedData);
+                        }
+
+                        if (dbTarget.UseForPaired && targetsWithPairing.Contains(predictionTarget))
+                        {
+                            var pairedData = pairedDataCollection!.Single(x => x.index == qdbIndices[i]).data;
+                            pairedDataDict.Add(protein, pairedData);
+                        }
                     }
 
-                    if (dbTarget.UseForPaired && targetsWithPairing.Contains(predictionTarget))
-                    {
-                        var pairedData = pairedDataCollection!.Single(x => x.index == qdbIndices[i]).data;
-                        pairedDataDict.Add(protein, pairedData);
-                    }
+                    dataEntries.Add(new AnnotatedMsaData(ColabfoldMsaDataType.Unpaired, dbTarget, unpairedDataDict));
+                    dataEntries.Add(new AnnotatedMsaData(ColabfoldMsaDataType.Paired, dbTarget, pairedDataDict));
                 }
 
-                dataEntries.Add(new AnnotatedMsaData(ColabfoldMsaDataType.Unpaired, dbTarget, unpairedDataDict));
-                dataEntries.Add(new AnnotatedMsaData(ColabfoldMsaDataType.Paired, dbTarget, pairedDataDict));
+                msaObj = new ColabFoldMsaObject(dataEntries, predictionTarget);
             }
-
-            var msaObj = new ColabFoldMsaObject(dataEntries, predictionTarget);
+            catch (Exception ex)
+            {
+                var policy = Settings.Strategy.FinalMsaGenerationFailedForSinglePrediction;
+                if (policy.ActionsRequsted.Contains(IssueHandlingAction.Report))
+                {
+                    _logger.LogError($"Error encountered while generating the MSA object for prediction target {predictionTarget.AutoId}.");
+                }
+                if (policy.ActionsRequsted.Contains(IssueHandlingAction.SkipCurrentItem))
+                {
+                    _logger.LogDebug("Skipping failed target.");
+                    continue;
+                }
+                if (policy.ActionsRequsted.Contains(IssueHandlingAction.StopProcessing))
+                {
+                    _logger.LogDebug("Stopping processing.");
+                    break;
+                }
+                if (policy.ActionsRequsted.Contains(IssueHandlingAction.KillProgram))
+                {
+                    throw;
+                }
+                // default action
+                throw;
+            }
             yield return msaObj;
         }
+
     }
 
     private async Task<string> AutoMergeMonoDbsAsync(string workingDir, string qdb, string uniprotMonoDb, string envDbMonoDb)
@@ -326,7 +404,7 @@ public class ColabfoldMmseqsHelper
             return false;
         }
 
-        if (!IsPersistedMmseqsDatabaseVersionCompatible(persistedA3mInfo.MmseqsHelperDatabaseVersion)) return false;
+        if (!IsMmseqsHelperDatabaseVersionCompatible(persistedA3mInfo.MmseqsHelperDatabaseVersion)) return false;
 
         // just exploring a bit how structured issue policy implementation might look like... Seems to take a lot of work.
         if (persistedA3mInfo.MmseqsVersion != MmseqsVersion)
@@ -417,9 +495,11 @@ public class ColabfoldMmseqsHelper
         
         List<Task> writeTasks = new List<Task>();
 
-        var predictionsToExtractDataFor = predictionBatch.Except(unfeasiblePredictions).ToList();
-        var predictionsForPairing = predictionsToExtractDataFor;
-        
+        var feasiblePredictions = predictionBatch.Except(unfeasiblePredictions).ToList();
+
+        var predictionToIndicesMapping = GeneratePredictionToIndexMapping(feasiblePredictions);
+        locator.QdbIndicesMapping = predictionToIndicesMapping;
+
         //******************************************* reconstruct align data dbs *******************************************************
         //******************************************* reconstruct mono data dbs ********************************************************
         // we are simulating what would happen if we were running it from scratch. For each db used for unpaired, compile a mono a3m db from existing results,
@@ -434,12 +514,25 @@ public class ColabfoldMmseqsHelper
 
             var localPath = Path.Join(workingDir, dbTarget.Database.Name);
             await Helper.CreateDirectoryAsync(localPath);
+
+            var monoToAlignFragmentMappings = dbTarget.UseForPaired ? await GenerateProteinToMonoDataFragmentMappings(
+                featuresForThisSourceDb, dbTarget, feasiblePredictions, unfeasiblePredictions,
+                ColabfoldMsaDataType.Paired) : new Dictionary<Protein, byte[]>();
+
+            var monoToUnpairedA3mFragmentMappings = dbTarget.UseForUnpaired ? await GenerateProteinToMonoDataFragmentMappings(
+                featuresForThisSourceDb, dbTarget, feasiblePredictions, unfeasiblePredictions,
+                ColabfoldMsaDataType.Unpaired) : new Dictionary<Protein, byte[]>();
+
+            unfeasiblePredictions.ForEach(x=> locator.QdbIndicesMapping.Remove(x));
+            if (!feasiblePredictions.Any())
+            {
+                return (locator, new List<PredictionTarget>());
+            }
+
             if (dbTarget.UseForPaired)
             {
                 var dataType = ColabfoldMsaDataType.Paired;
-                var monoToAlignFragmentMappings = await GenerateDataDbFragmentsForSourceDatabaseAsync(
-                    dbTarget.Database, featuresForThisSourceDb, dataType, dbProcessingBatchSize);
-                var alignDbObject = GenerateDbObjectForPredictionBatch(predictionsForPairing, monoToAlignFragmentMappings, locator, dataType);
+                var alignDbObject = GenerateDbObjectForPredictionBatch(feasiblePredictions, monoToAlignFragmentMappings, locator, dataType);
 
                 var pairedAlignDb = Path.Join(localPath, "align1");
                 var alignDbDataDbPath = $"{pairedAlignDb}{Mmseqs.Settings.Mmseqs2Internal.DbDataSuffix}";
@@ -451,9 +544,7 @@ public class ColabfoldMmseqsHelper
             if (dbTarget.UseForUnpaired)
             {
                 var dataType = ColabfoldMsaDataType.Unpaired;
-                var monoToUnpairedA3mFragmentMappings = await GenerateDataDbFragmentsForSourceDatabaseAsync(
-                    dbTarget.Database, featuresForThisSourceDb, dataType, dbProcessingBatchSize);
-                var unpairedA3mDbObject = GenerateDbObjectForPredictionBatch(predictionsToExtractDataFor, monoToUnpairedA3mFragmentMappings, locator, dataType);
+                var unpairedA3mDbObject = GenerateDbObjectForPredictionBatch(feasiblePredictions, monoToUnpairedA3mFragmentMappings, locator, dataType);
 
                 var unpairedA3mDb = Path.Join(localPath, "unpaired_a3m");
                 var unpairedA3mDbDataDbPath = $"{unpairedA3mDb}{Mmseqs.Settings.Mmseqs2Internal.DbDataSuffix}";
@@ -462,26 +553,56 @@ public class ColabfoldMmseqsHelper
                 locator.UnPairedA3mDbPathMapping.Add(dbTarget, unpairedA3mDb);
             }
         }
-
-
-
-
+        
         //******************************************* generate new qdb *******************************************************
-        var predictionToIndicesMapping = GeneratePredictionToIndexMapping(predictionsToExtractDataFor);
-        var queryDatabaseForPairing = GenerateQdbForPairing(predictionsToExtractDataFor, predictionToIndicesMapping);
-        locator.QdbIndicesMapping = predictionToIndicesMapping;
+        var queryDatabaseForPairing = GenerateQdbForPairing(feasiblePredictions, predictionToIndicesMapping);
 
         var pairedQdb = Path.Join(workingDir, "qdb_pair");
         locator.PairingQdbPath = pairedQdb;
 
         writeTasks.Add(queryDatabaseForPairing.WriteToFileSystemAsync(Mmseqs.Settings, pairedQdb));
-
-
-
-
-
+        
         await Task.WhenAll(writeTasks);
-        return (locator, predictionsToExtractDataFor);
+        return (locator, feasiblePredictions);
+    }
+
+    private async Task<Dictionary<Protein, byte[]>> GenerateProteinToMonoDataFragmentMappings(
+        List<MmseqsPersistedMonoDbEntryFeature> featuresForThisSourceDb, MmseqsSourceDatabaseTarget dbTarget,
+        List<PredictionTarget> mutableFeasiblePredictions, List<PredictionTarget> mutableUnfeasiblePredictions, ColabfoldMsaDataType dataType)
+    {
+        var dbProcessingBatchSize = Settings.ComputingConfig.ExistingDatabaseSearchParallelizationFactor;
+
+        Dictionary<Protein, byte[]> monoToFragmentMappings = new();
+        
+        var relevantFeatures = featuresForThisSourceDb
+            .Where(x => x.SourceType == dataType).ToList();
+
+        if (!relevantFeatures.Any()) return monoToFragmentMappings;
+
+        monoToFragmentMappings = await TryGetDataDbFragmentsForSourceDatabaseAsync(
+            dbTarget.Database, relevantFeatures, dataType, dbProcessingBatchSize);
+
+        var successfulMonos = monoToFragmentMappings.Select(x => x.Key).ToList();
+        var unsuccessfulMonos = relevantFeatures.Select(x => x.Mono).Except(successfulMonos).ToList();
+
+        if (unsuccessfulMonos.Any())
+        {
+            _logger.LogWarning(
+                $"Failed obtaining the data for {unsuccessfulMonos.Count}/{relevantFeatures.Count} required features/monos.");
+
+            var unfeasibleDueToThisDataType = mutableFeasiblePredictions
+                .Where(x => x.UniqueProteins.Any(prot => unsuccessfulMonos.Contains(prot))).ToList();
+            _logger.LogInformation($"Predictions made unfeasible: {unfeasibleDueToThisDataType.Count}");
+
+            mutableFeasiblePredictions.RemoveAll(unfeasibleDueToThisDataType.Contains);
+            mutableUnfeasiblePredictions.AddRange(unfeasibleDueToThisDataType);
+            // remove features regardless of pairing; since we can't produce the result unless both were successful
+            featuresForThisSourceDb.RemoveAll(x => unsuccessfulMonos.Contains(x.Mono));
+
+            _logger.LogInformation($"Feasible predictions remaining in batch: {mutableFeasiblePredictions.Count}");
+        }
+
+        return monoToFragmentMappings;
     }
 
     private async Task<List<PredictionTarget>> GenerateA3msFromFastasGivenExistingMonoDbsAsync(string outputPath, List<string> realPersistedMonoDatabasesPaths, List<PredictionTarget> predictionBatch)
@@ -508,7 +629,7 @@ public class ColabfoldMmseqsHelper
         if (!feasiblePredictionTargets.Any())
         {
             _logger.LogWarning("All targets in the batch were unfeasible");
-            return resultList;
+            return new List<PredictionTarget>();
         }
         if (feasiblePredictionTargets.Count != predictionBatch.Count)
         {
@@ -728,13 +849,14 @@ public class ColabfoldMmseqsHelper
 
     /// <summary>
     /// Contains original data for each protein target, doesn't strip anything except the data terminator \0
+    /// Is not guaranteed it will return an entry for all inputs!
     /// </summary>
     /// <param name="targetDb"></param>
     /// <param name="featuresCollection"></param>
     /// <param name="dataType"></param>
     /// <param name="persistedDbLocationBatchSize"></param>
     /// <returns></returns>
-    private async Task<Dictionary<Protein, byte[]>> GenerateDataDbFragmentsForSourceDatabaseAsync(
+    private async Task<Dictionary<Protein, byte[]>> TryGetDataDbFragmentsForSourceDatabaseAsync(
         MmseqsSourceDatabase targetDb,
         List<MmseqsPersistedMonoDbEntryFeature> featuresCollection,
         ColabfoldMsaDataType dataType,
@@ -749,22 +871,12 @@ public class ColabfoldMmseqsHelper
             .Select(x => x.DbPath).Distinct().ToList();
 
         var relevantLocationBatches = GetBatches(relevantLocations, persistedDbLocationBatchSize);
+        _logger.LogDebug($"Search locations pooled into {relevantLocationBatches.Count} batches.");
         foreach (var searchBatch in relevantLocationBatches)
         {
+            _logger.LogDebug($"Searching a batch with {searchBatch.Count} locations...");
             // the monoToAlignFragmentMappings dict gets mutated each round
             await AppendFragmentDictionaryForSearchBatchAsync(monoToDataFragmentMappings, searchBatch, relevantFeatures, dataType);
-        }
-
-        // need to include the empty entries for ones not found (it happens sometimes that after filter or whatever has no results,
-        // and this reconstruction is mimicking that normal behavior
-        var relevantMonos = relevantFeatures.Select(x => x.Mono);
-        foreach (var relevantMono in relevantMonos)
-        {
-            var hasNoResults = !monoToDataFragmentMappings.ContainsKey(relevantMono);
-            if (hasNoResults)
-            {
-                monoToDataFragmentMappings.Add(relevantMono, Array.Empty<byte>());
-            }
         }
 
         return monoToDataFragmentMappings;
@@ -1244,14 +1356,26 @@ public class ColabfoldMmseqsHelper
             resultTasksMapping.Add((dbLocation, Mmseqs.GetHeaderAndIndicesForGivenHeadersInSequenceDbAsync(qdbPath, headersToSearch)));
         }
 
-        await Task.WhenAll(resultTasksMapping.Select(x => x.resultTask));
+        var tasks = resultTasksMapping.Select(x => x.resultTask).ToList();
+        try
+        {
+            await Task.WhenAll(tasks);
+        }
+        catch (Exception ex)
+        {
+            var exceptions = tasks.Where(x => x.Exception is not null).ToList();
+            if (exceptions.Any())
+            {
+                _logger.LogWarning($"Reading entries from some locations ({exceptions.Count}/{tasks.Count}) failed unexpectedly.");
+            }
+        }
 
-        foreach (var (dbPath, resultTask) in resultTasksMapping)
+        foreach (var (dbPath, resultTask) in resultTasksMapping.Where(x=>x.resultTask.IsCompletedSuccessfully))
         {
             var entriesInDb = resultTask.Result;
             foreach (var (id, indices) in entriesInDb)
             {
-                if (!indices.Any()) continue;
+                if (!indices.Any()) continue; //this should be impossible though?
                 var protein = uniqueProteins.Single(x => x.Id == id);
                 if (!res.ContainsKey(protein))
                 {
@@ -1516,6 +1640,17 @@ public class ColabfoldMmseqsHelper
         }
     }
     
+    /// <summary>
+    /// It finds _one_ result mapping with required features for each feature. There can be any number in the db that are valid, but it will take the first one it runs into,
+    /// no particular order enforced. We need _a_ fitting feature, not all of them.
+    /// The only issue is the db is corrupt there, repeating the program will keep grabbing the corrupt one. So there's the assumption that the db doesn't have corrupt entries,
+    /// which is "ok". Corruption handling can be done elsewhere. User can manually delete the thing based on errors, or ignore the existing db if needed.
+    /// </summary>
+    /// <param name="persistedMonoDatabasesPaths"></param>
+    /// <param name="requiredFeatures"></param>
+    /// <param name="existingDbParallelSearchBatchSize"></param>
+    /// <returns></returns>
+    /// <exception cref="Exception"></exception>
     private async Task<(List<MmseqsPersistedMonoDbEntryFeature> missingFeatures, List<MmseqsPersistedMonoDbEntryFeature> usableFeatures)>
         GetUsableAndMissingFeaturesAsync(List<string> persistedMonoDatabasesPaths, List<MmseqsPersistedMonoDbEntryFeature> requiredFeatures, int existingDbParallelSearchBatchSize)
     {
@@ -1553,8 +1688,8 @@ public class ColabfoldMmseqsHelper
                             }
                         }
 
-                        // theoretically there be multiple, should never happen but eh. At this point
-                        var subFolderForTargetDatabase = matchingSubFolders.First();
+                        // theoretically there be multiple, should never happen but eh. At this point it's a rare enough thing to accept as a weak point
+                        var subFolderForTargetDatabase = matchingSubFolders.First()!;
                         var subPath = Path.Join(location, subFolderForTargetDatabase);
                         string requiredDbName;
                         switch (feature.SourceType)
@@ -1604,10 +1739,16 @@ public class ColabfoldMmseqsHelper
 
         return res.Select(x=>(x.Key, x.Value)).ToList();
     }
-    private bool IsPersistedMmseqsDatabaseVersionCompatible(string mmseqsHelperDatabaseVersion)
+    private bool IsMmseqsHelperDatabaseVersionCompatible(string version)
     {
         //TODO: make this settable by strategy
-        return mmseqsHelperDatabaseVersion == HelperDatabaseVersion;
+        if (version == HelperDatabaseVersion) return true;
+
+        if (Settings.DatabaseVersionCompatibilityMatrix.ContainsKey(HelperDatabaseVersion))
+        {
+            return Settings.DatabaseVersionCompatibilityMatrix[HelperDatabaseVersion].Contains(version);
+        }
+        return false;
     }
 
     private async Task<bool> IsValidDbFolder(string path)
@@ -1630,7 +1771,7 @@ public class ColabfoldMmseqsHelper
         }
 
         var persistedMonoDbInfo = x!;
-        if (!IsPersistedMmseqsDatabaseVersionCompatible(persistedMonoDbInfo.MmseqsHelperDatabaseVersion))
+        if (!IsMmseqsHelperDatabaseVersionCompatible(persistedMonoDbInfo.MmseqsHelperDatabaseVersion))
         {
             _logger.LogInformation($"Mono db at ({path}) incompatible version ({persistedMonoDbInfo.MmseqsHelperDatabaseVersion}) vs current ({HelperDatabaseVersion}).");
             return false;

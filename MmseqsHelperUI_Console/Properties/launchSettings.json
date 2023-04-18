@@ -6,7 +6,7 @@
     },
     "testPair": {
       "commandName": "Project",
-      "commandLineArgs": "auto-pair\r\n--InputFastaPaths=C:\\temp\\mmseqs_test\\all_y_pair.fasta\r\n--MmseqsBinaryPath=\"mmseqs\"\r\n--UniprotDbPath=\"\\\\storage.imp.ac.at\\resources\\colabfold\\UniRef30_2022_02\\uniref30_2202_db\"\r\n--EnvDbPath=colabfold_envdb_202108_db\r\n--OutputPath=C:\\temp\\mmseqs_test\\pair_result_db\r\n--PersistedMonoDatabasePaths=\"C:\\temp\\mmseqs_test\\mono_result_db\"\r\n--TempPath=C:\\temp\\mmseqs_test\\temp\\pair\r\n--PersistedA3mResultDatabasePaths=\"C:\\temp\\mmseqs_test\\pair_result_db\"\r\n\r\n"
+      "commandLineArgs": "auto-pair\r\n--InputFastaPaths=\"C:\\temp\\mmseqs_test\\problematic.fasta\"\r\n--MmseqsBinaryPath=\"C:\\Users\\juraj.ahel\\source\\repos\\xeniorn\\AlphafoldHelper\\ConsoleTester\\bin\\Debug\\net6.0\\ConsoleTester.exe\"\r\n--UniprotDbPath=\"\\\\storage.imp.ac.at\\resources\\colabfold\\UniRef30_2022_02\\uniref30_2202_db\"\r\n--EnvDbPath=colabfold_envdb_202108_db\r\n--OutputPath=C:\\temp\\mmseqs_test\\pair_result_db\r\n--PersistedMonoDatabasePaths=\"C:\\temp\\mmseqs_test\\mono_result_db\"\r\n--TempPath=C:\\temp\\mmseqs_test\\temp\\pair\r\n--PersistedA3mResultDatabasePaths=\"C:\\temp\\mmseqs_test\\pair_result_db\"\r\n--UseRamPreloading=true\r\n--UseEnv=true\r\n--UsePairing=true\r\n--UsePrecalculatedIndex=1\r\n"
     },
     "testMono": {
       "commandName": "Project",
