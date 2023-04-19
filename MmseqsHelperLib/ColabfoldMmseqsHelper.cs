@@ -1883,6 +1883,11 @@ public class ColabfoldMmseqsHelper
 
     private async Task<string> PerformPairingForDbTargetAsync(string workingDir, string qdbPath, string pairedAlignDb, MmseqsSourceDatabaseTarget dbTarget)
     {
+        //TODO: 2023-04-19 right now it fails if using idx taxonomy - mmseqs still looks for db_taxonomy, instead of db.idx_taxonomy, unlike search, which looks for db.idx_taxonomy
+        // I thought to create a soft link to db.idx_taxonomy, but I can't guarantee the process can write to the target location
+        // technically I could create a folder with the target db with _all_ the db softlinked, then I could link whatever I want?
+        // or, do I patch mmseqs itself?
+
         var performanceParams = Mmseqs.PerformanceParams(dbTarget.RequestPreloadingToRam);
 
         var targetDbPathBase = Mmseqs.GetProperDatabaseRootPath(dbTarget.Database.Path);

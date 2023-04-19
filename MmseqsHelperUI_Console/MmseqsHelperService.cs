@@ -51,43 +51,80 @@ internal sealed class MmseqsHelperService
 
         var temp = _configuration["TempPath"]!;
         File.WriteAllText(Path.Join(temp,"allSettings.json"), settings.ToJson());
-        
-        if (mode.Process == MmseqsAutoProcess.GenerateMonoDbs)
+
+        switch (mode.Process)
         {
-            var inputFastaPaths = _configuration["InputFastaPaths"]?.Split(',') ?? Array.Empty<string>();
-            var dbPaths = _configuration["PersistedMonoDatabasePaths"]?.Split(',') ?? Array.Empty<string>();
-            var outPath = _configuration["OutputPath"]; //?? string.Empty;
-            var excludedIdsFilePath = _configuration["ExclusionFilePath"] ?? string.Empty;
-            
-            List<string> excludedIds = new List<string>();
+            case MmseqsAutoProcess.GenerateMonoDbs:
+                {
+                    var inputFastaPaths = _configuration["InputFastaPaths"]?.Split(',') ?? Array.Empty<string>();
+                    var dbPaths = _configuration["PersistedMonoDatabasePaths"]?.Split(',') ?? Array.Empty<string>();
+                    var outPath = _configuration["OutputPath"]; //?? string.Empty;
+                    var excludedIdsFilePath = _configuration["ExclusionFilePath"] ?? string.Empty;
 
-            if (File.Exists(excludedIdsFilePath))
+                    List<string> excludedIds = new List<string>();
+
+                    if (File.Exists(excludedIdsFilePath))
+                    {
+                        excludedIds = (await File.ReadAllLinesAsync(excludedIdsFilePath)).Select(x => x.Trim()).ToList();
+                    }
+
+                    var a = new ColabfoldMmseqsHelper(settings, _logger);
+                    await a.GenerateColabfoldMonoDbsFromFastasAsync(inputFastaPaths, dbPaths, excludedIds, outPath);
+                    break;
+                }
+            case MmseqsAutoProcess.GenerateA3mFilesForColabfold:
+                {
+                    var inputFastaPaths = _configuration["InputFastaPaths"]?.Split(',') ?? Array.Empty<string>();
+                    var dbPaths = _configuration["PersistedMonoDatabasePaths"]?.Split(',') ?? Array.Empty<string>();
+                    var a3mPaths = _configuration["PersistedA3mResultDatabasePaths"]?.Split(',') ?? Array.Empty<string>();
+                    var outPath = _configuration["OutputPath"]; //?? string.Empty;
+                    var excludedIdsFilePath = _configuration["ExclusionFilePath"] ?? string.Empty;
+
+                    List<string> excludedIds = new List<string>();
+
+                    if (File.Exists(excludedIdsFilePath))
+                    {
+                        excludedIds = (await File.ReadAllLinesAsync(excludedIdsFilePath)).Select(x => x.Trim()).ToList();
+                    }
+
+                    var a = new ColabfoldMmseqsHelper(settings, _logger);
+                    await a.GenerateA3msFromFastasGivenExistingMonoDbsAsync(inputFastaPaths, dbPaths, excludedIds, outPath, a3mPaths);
+                    break;
+                }
+
+            case MmseqsAutoProcess.MimicColabfoldSearch:
+                {
+                    var inputFastaPaths = _configuration["InputFastaPaths"]?.Split(',') ?? Array.Empty<string>();
+                    var dbPathRoot = _configuration["PersistedResultsPath"] ?? string.Empty;
+                    var monoPath = Path.Join(dbPathRoot, "mono");
+                    var a3mPath = Path.Join(dbPathRoot, "a3m");
+                    var outPath = _configuration["OutputPath"]; //?? string.Empty;
+
+                    var a = new ColabfoldMmseqsHelper(settings, _logger);
+
+                    _logger.LogInformation("Starting mono db search followed by final a3m generation for multimers.");
+                    _logger.LogInformation("Starting a3m generation for existing mono results in parallel, if any exist.");
+
+                    var tasks = new List<Task>()
             {
-                excludedIds = (await File.ReadAllLinesAsync(excludedIdsFilePath)).Select(x => x.Trim()).ToList();
-            }
+                a.GenerateColabfoldMonoDbsFromFastasAsync(
+                    inputFastaPaths, new[] {monoPath}, Array.Empty<string>(), outPath),
+                a.GenerateA3msFromFastasGivenExistingMonoDbsAsync(
+                    inputFastaPaths, new[] {monoPath}, Array.Empty<string>(), outPath, new[] {a3mPath}),
+            };
 
-            var a = new ColabfoldMmseqsHelper(settings, _logger);
-            await a.GenerateColabfoldMonoDbsFromFastasAsync(inputFastaPaths, dbPaths, excludedIds, outPath);
+                    await Task.WhenAll(tasks);
+
+                    _logger.LogInformation("Redoing a3m generation for any missing ones...");
+
+                    await a.GenerateA3msFromFastasGivenExistingMonoDbsAsync(
+                        inputFastaPaths, new[] { monoPath }, Array.Empty<string>(), outPath, new[] { a3mPath });
+                    break;
+                }
+            default:
+                throw new NotImplementedException("This should never happen.");
+                break;
         }
-        else if (mode.Process == MmseqsAutoProcess.GenerateA3mFilesForColabfold)
-        {
-            var inputFastaPaths = _configuration["InputFastaPaths"]?.Split(',') ?? Array.Empty<string>();
-            var dbPaths = _configuration["PersistedMonoDatabasePaths"]?.Split(',') ?? Array.Empty<string>();
-            var a3mPaths = _configuration["PersistedA3mResultDatabasePaths"]?.Split(',') ?? Array.Empty<string>();
-            var outPath = _configuration["OutputPath"]; //?? string.Empty;
-            var excludedIdsFilePath = _configuration["ExclusionFilePath"] ?? string.Empty;
-
-            List<string> excludedIds = new List<string>();
-
-            if (File.Exists(excludedIdsFilePath))
-            {
-                excludedIds = (await File.ReadAllLinesAsync(excludedIdsFilePath)).Select(x => x.Trim()).ToList();
-            }
-
-            var a = new ColabfoldMmseqsHelper(settings, _logger);
-            await a.GenerateA3msFromFastasGivenExistingMonoDbsAsync(inputFastaPaths, dbPaths, excludedIds, outPath, a3mPaths);
-        }
-
     }
 
     private IssueHandlingStrategy GetStrategy()
@@ -99,11 +136,15 @@ internal sealed class MmseqsHelperService
 
     private ComputingStrategyConfiguration GetComputingConfig()
     {
-        var a = new ComputingStrategyConfiguration()
+        const int monoBatchSizeHardcodedDefault = 500;
+        const int a3mBatchSizeHardcodedDefault = 1000;
+        const int existingDbSearchParallelizationHardcodedDefault = 20;
+
+    var a = new ComputingStrategyConfiguration()
         {
-            MaxDesiredMonoBatchSize = 500,
-            MaxDesiredPredictionTargetBatchSize = 1000,
-            ExistingDatabaseSearchParallelizationFactor = 20,
+            MaxDesiredMonoBatchSize = Helper.ParseIntOrDefault(_configuration["SearchMaxBatchSize"], monoBatchSizeHardcodedDefault),
+            MaxDesiredPredictionTargetBatchSize = Helper.ParseIntOrDefault(_configuration["PairingMaxBatchSize"], a3mBatchSizeHardcodedDefault),
+            ExistingDatabaseSearchParallelizationFactor = Helper.ParseIntOrDefault(_configuration["ExistingDbSearchParallelization"], existingDbSearchParallelizationHardcodedDefault),
             MmseqsSettings = GetMmseqsSettings(),
             ReportSuccessfulUsageOfPersistedDb = true
     };
@@ -113,6 +154,8 @@ internal sealed class MmseqsHelperService
         return a;
 
     }
+
+    
 
     private PersistedMonoDatabaseConfiguration GetPersistedMonoConfig()
     {
@@ -206,8 +249,8 @@ internal sealed class MmseqsHelperService
     {
         // doesn't work, would have to be made mutable... don't want that
         // TODO: jsondeserialize instead?
-        var intSet = new MmseqsInternalConfigurationSettings();
-        _configuration.GetSection(MmseqsInternalConfigurationSettings.ConfigurationName).Bind(intSet);
+        // var intSet = new MmseqsInternalConfigurationSettings();
+        // _configuration.GetSection(MmseqsInternalConfigurationSettings.ConfigurationName).Bind(intSet);
         
         var settings = new MmseqsSettings();
 
@@ -223,17 +266,6 @@ internal sealed class MmseqsHelperService
             _logger.LogError($"Failed to parse ThreadsPerMmseqsProcess, value should be an integer, was ({_configuration["ThreadsPerMmseqsProcess"]})");
             if (Strategy.SuspiciousData == SuspiciousDataStrategy.PlaySafe) throw new ArgumentException();
         }
-
-        
-        //if (Helper.TryParseBool(configuration["PreLoadDb"], out var parsedPreLoadDb))
-        //{
-        //    settings.PreLoadDb = parsedPreLoadDb;
-        //}
-        //else
-        //{
-        //    _logger.LogError($"Failed to parse PreLoadDb, value should be a bool, was ({configuration["PreLoadDb"]})");
-        //    if (Strategy.SuspiciousData == SuspiciousDataStrategy.PlaySafe) throw new ArgumentException();
-        //}
         
         if (Helper.TryParseBool(_configuration["UsePrecalculatedIndex"], out var parsedPrecalcualtedIndex))
         {

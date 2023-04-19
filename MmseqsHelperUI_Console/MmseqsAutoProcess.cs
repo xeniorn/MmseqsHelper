@@ -4,5 +4,6 @@ internal enum MmseqsAutoProcess
 {
     Null = default,
     GenerateMonoDbs,
-    GenerateA3mFilesForColabfold
+    GenerateA3mFilesForColabfold,
+    MimicColabfoldSearch
 }

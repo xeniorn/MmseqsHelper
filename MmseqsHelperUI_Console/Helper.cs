@@ -82,4 +82,12 @@ internal static class Helper
         parsedValue = false;
         return false;
     }
+
+    public static int ParseIntOrDefault(string? input, int defaultValue)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return defaultValue;
+        var success = int.TryParse(input, out var parsed);
+        if (success) return parsed;
+        return defaultValue;
+    }
 }

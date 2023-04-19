@@ -23,6 +23,7 @@ internal sealed class Program
             // verb string is what the command line expects, process is what will be used to select the processing in code
             new MmseqsHelperModeGenerateMonoDbs("auto-mono"),
             new MmseqsHelperModeGenerateA3mFilesForColabfold("auto-pair"),
+            new MmseqsHelperModeColabfoldSearchMimic("colabfold-search-mimic")
         };
 
         var configs = new List<string> { DefaultConfigFileName };
@@ -35,6 +36,11 @@ internal sealed class Program
 
         var selectedMode = allowedModes.SingleOrDefault(x => x.VerbString == args.FirstOrDefault()) ??
                            MmseqsHelperMode.Null;
+
+        if (selectedMode == MmseqsHelperMode.Null)
+        {
+            Console.WriteLine("Action unsupported or missing.");
+        }
 
         // help fallback
         if (!args.Any() || args.Any(x => HelpArgs.Contains(x)))
