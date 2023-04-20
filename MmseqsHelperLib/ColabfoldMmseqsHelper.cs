@@ -797,6 +797,10 @@ public class ColabfoldMmseqsHelper
         copyTasks.Add(Mmseqs.CopyDatabaseAsync(qdbPath, finalPathQdb));
         _logger.LogInformation($"Query db output: {finalPathQdb}");
 
+        var finalPathProfile = Path.Join(outDir, ReferenceSourceDatabaseTarget.Database.Name, Settings.PersistedMonoDbConfig.SearchProfileDbName);
+        copyTasks.Add(Mmseqs.CopyDatabaseAsync(finalPathProfile, finalPathProfile));
+        _logger.LogInformation($"Database {ReferenceSourceDatabaseTarget.Database.Name} search profile output: {finalPathProfile}");
+
         if (ReferenceSourceDatabaseTarget.UseForUnpaired)
         {
             var monoDbPath = refProcessingTasks.Single(x => x.msaType == ColabfoldMsaDataType.Unpaired).task.Result;
@@ -838,6 +842,7 @@ public class ColabfoldMmseqsHelper
             referenceDbTarget: ReferenceSourceDatabaseTarget, databaseTargets: MmseqsSourceDatabaseTargets,
             mmseqsHelperDatabaseVersion: HelperDatabaseVersion, targetCount: proteinBatch.Count,
             mmseqsVersion: MmseqsVersion);
+        info.LoadLengths(proteinBatch);
 
         var infoPath = Path.Join(outDir, Settings.PersistedMonoDbConfig.InfoFilename);
         await info.WriteToFileSystemAsync(infoPath);

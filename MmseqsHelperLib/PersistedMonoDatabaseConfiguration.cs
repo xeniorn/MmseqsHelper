@@ -2,9 +2,11 @@
 
 public class PersistedMonoDatabaseConfiguration
 {
-    public string ForPairingAlignDbName { get; init; } = @"for_pairing_align";
+    public const string ConfigurationName = "PersistedMonoDatabase";
 
+    public string ForPairingAlignDbName { get; init; } = @"for_pairing_align";
     public string InfoFilename { get; set; } = @"database_info.json";
+    public string SearchProfileDbName { get; set; } = @"profile";
     
     /// <summary>
     /// database info file 1, qdb(seq, h)*(data, index, dbtype) 6

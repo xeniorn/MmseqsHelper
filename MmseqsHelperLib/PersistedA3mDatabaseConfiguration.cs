@@ -2,6 +2,8 @@
 
 public class PersistedA3mDatabaseConfiguration
 {
+    public const string ConfigurationName = "PersistedA3mDatabase";
+
     public string A3mInfoFilename { get; init; } = @"msa_info.json";
     /// <summary>
     /// for organization of final a3m files into subfolders, taking progressively larger substrings from left
