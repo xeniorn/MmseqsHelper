@@ -731,6 +731,19 @@ public class ColabfoldMmseqsHelper
         await Task.WhenAll(writeTasks);
         LogSomething($"Wrote {msaObjectCounter} result files in {outputPath}.");
 
+        if (Settings.ComputingConfig.DeleteTemporaryData)
+        {
+            var cleanupTasks = new List<Task>();
+            _logger.LogInformation($"Cleaning up temporary location ({workingDir}) ...");
+            cleanupTasks.Add(Task.Run(() => Helper.RecursiveDeleteDirectoryAsync(workingDir)));
+            await Task.WhenAll(cleanupTasks);
+            _logger.LogInformation($"Done cleaning up temporary location.");
+        }
+        else
+        {
+            _logger.LogInformation($"Temp data not deleted as requested ({workingDir}).");
+        }
+
         return resultList;
     }
 
