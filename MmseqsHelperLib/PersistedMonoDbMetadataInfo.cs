@@ -18,7 +18,7 @@ internal class PersistedMonoDbMetadataInfo
         WriteIndented = true
     };
 
-    public PersistedMonoDbMetadataInfo(DateTime createTime, MmseqsSourceDatabaseTarget referenceDbTarget, List<MmseqsSourceDatabaseTarget> databaseTargets, string mmseqsHelperDatabaseVersion, int targetCount, string mmseqsVersion)
+    public PersistedMonoDbMetadataInfo(DateTime createTime, MmseqsSourceDatabaseTarget referenceDbTarget, List<MmseqsSourceDatabaseTarget> databaseTargets, string mmseqsHelperDatabaseVersion, int targetCount, string mmseqsVersion, ComputationInfoReport computationInfoReport)
     {
         CreateTime = createTime;
         ReferenceDbTarget = referenceDbTarget;
@@ -26,7 +26,10 @@ internal class PersistedMonoDbMetadataInfo
         MmseqsHelperDatabaseVersion = mmseqsHelperDatabaseVersion;
         TargetCount = targetCount;
         MmseqsVersion = mmseqsVersion;
+        this.ComputationInfoReport = computationInfoReport;
     }
+
+    public ComputationInfoReport ComputationInfoReport { get; set; }
 
     public string MmseqsHelperDatabaseVersion { get; set; }
     public DateTime CreateTime { get; set; }

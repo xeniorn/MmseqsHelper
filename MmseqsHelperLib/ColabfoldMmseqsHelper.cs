@@ -911,10 +911,11 @@ public class ColabfoldMmseqsHelper
         await Task.WhenAll(copyTasks);
         
         //******************************************* print out the database info *************************************
+        //TODO: refactor / encapsulate this
         var info = new PersistedMonoDbMetadataInfo(createTime: DateTime.Now,
             referenceDbTarget: ReferenceSourceDatabaseTarget, databaseTargets: MmseqsSourceDatabaseTargets,
             mmseqsHelperDatabaseVersion: InstanceInfo.HelperDatabaseVersion, targetCount: proteinBatch.Count,
-            mmseqsVersion: InstanceInfo.MmseqsVersion);
+            mmseqsVersion: InstanceInfo.MmseqsVersion, computationInfoReport:new ComputationInfoReport(Settings, InstanceInfo));
         info.LoadLengths(proteinBatch);
 
         var infoPath = Path.Join(outDir, Settings.PersistedMonoDbConfig.InfoFilename);

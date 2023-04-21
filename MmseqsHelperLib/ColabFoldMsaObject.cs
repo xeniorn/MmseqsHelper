@@ -29,12 +29,11 @@ public class ColabFoldMsaObject
     /// <param name="instanceInfo"></param>
     /// <returns></returns>
     /// this is bad - it includes the ColabfoldHelper-specific object... but this is designed to be an implementation-agnostic representation of CFMsaObject.
-    /// TODO: refactor this
+    /// TODO: refactor this. Possibly just put it out of this? Or use extension method?
     public async Task WriteToFileSystemAsync(ColabfoldMmseqsHelperSettings settings, string targetFolder, ColabfoldHelperComputationInstanceInfo instanceInfo)
     {
         Metadata = new ColabfoldMsaMetadataInfo(predictionTarget: PredictionTarget, createTime: DateTime.Now,
-            computationInstanceInfo: instanceInfo, 
-            settings: settings);
+            computationInstanceInfo: instanceInfo, settings: settings);
 
         var fullMsaPath = Path.Join(targetFolder, settings.PersistedA3mDbConfig.ResultA3mFilename);
         var fullInfoPath = Path.Join(targetFolder, settings.PersistedA3mDbConfig.A3mInfoFilename);
