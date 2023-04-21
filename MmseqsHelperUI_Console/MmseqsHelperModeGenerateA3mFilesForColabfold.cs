@@ -23,7 +23,8 @@ internal class MmseqsHelperModeGenerateA3mFilesForColabfold : MmseqsHelperMode
             { "ExclusionFilePath",(String.Empty,false)},
             {"ThreadsPerMmseqsProcess", ("1",false) },
             {"PreLoadDb", ("false",false)},
-            {"UsePrecalculatedIndex",("true",false)}
+            {"UsePrecalculatedIndex",("true",false)},
+            {"DeleteTemporaryData", ("true", false)}
         };
     }
 
@@ -41,9 +42,9 @@ Options are case-insensitive and can be prefixed with '/' '--' (recommended) or 
 ###################
 Options:
 ###################
-"
-            + string.Join("\n", defaults.Select(x => $"{x.Key} {x.Value.defaultValue}{(x.Value.required ? String.Empty : " [optional]")}"))
-            + @"
+ {string.Join(Environment.NewLine,
+     defaults.Select(x =>
+         $"{x.Key} {x.Value.defaultValue}{(x.Value.required ? String.Empty : " [optional]")}"))}        
 ###################";
     }
 }

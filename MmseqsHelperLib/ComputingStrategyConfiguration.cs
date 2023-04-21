@@ -11,6 +11,7 @@ public class ComputingStrategyConfiguration
     public MmseqsSettings MmseqsSettings { get; set; }
     public bool ReportSuccessfulUsageOfPersistedDb { get; set; }
 
-    
+    public bool DeleteTemporaryData { get; set; } = true;
+
 
 }

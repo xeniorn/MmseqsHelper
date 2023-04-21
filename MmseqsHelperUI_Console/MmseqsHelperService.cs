@@ -20,7 +20,7 @@ internal sealed class MmseqsHelperService
     {
         Strategy = GetStrategy();
 
-        _logger.LogInformation($"Running mmseqs helper, mode: {mode}");
+        _logger.LogInformation($"Running mmseqs helper, mode: {mode} version: {ColabfoldMmseqsHelper.HardcodedColabfoldMmseqsHelperDatabaseVersion}");
         var configJson = Helper.GetConfigJsonFromConfig(_configuration);
         _logger.LogInformation("Using combined defaults and inputs below:\n" + configJson);
 
@@ -50,8 +50,8 @@ internal sealed class MmseqsHelperService
             colabfoldMmseqsParamsUnpairedSpecialForReferenceDb: colabfoldMmseqsParamsConfigRefDb);
 
         var temp = _configuration["TempPath"]!;
-        File.WriteAllText(Path.Join(temp,"allSettings.json"), settings.ToJson());
-
+        File.WriteAllText(Path.Join(temp,"allSettingsDump.json"), settings.ToJson());
+        
         switch (mode.Process)
         {
             case MmseqsAutoProcess.GenerateMonoDbs:
@@ -100,6 +100,15 @@ internal sealed class MmseqsHelperService
                     var a3mPath = Path.Join(dbPathRoot, "a3m");
                     var outPath = _configuration["OutputPath"]; //?? string.Empty;
 
+                    var dirCreateTasks = new List<Task>()
+                    {
+                        MmseqsHelperLib.Helper.CreateDirectoryAsync(monoPath),
+                        MmseqsHelperLib.Helper.CreateDirectoryAsync(a3mPath),
+                        MmseqsHelperLib.Helper.CreateDirectoryAsync(outPath),
+                    };
+
+                    await Task.WhenAll(dirCreateTasks);
+
                     var a = new ColabfoldMmseqsHelper(settings, _logger);
 
                     _logger.LogInformation("Starting mono db search followed by final a3m generation for multimers.");
@@ -108,9 +117,9 @@ internal sealed class MmseqsHelperService
                     var tasks = new List<Task>()
             {
                 a.GenerateColabfoldMonoDbsFromFastasAsync(
-                    inputFastaPaths, new[] {monoPath}, Array.Empty<string>(), outPath),
+                    inputFastaPaths, new[] {monoPath}, Array.Empty<string>(), monoPath),
                 a.GenerateA3msFromFastasGivenExistingMonoDbsAsync(
-                    inputFastaPaths, new[] {monoPath}, Array.Empty<string>(), outPath, new[] {a3mPath}),
+                    inputFastaPaths, new[] {monoPath}, Array.Empty<string>(), a3mPath, new[] {a3mPath}),
             };
 
                     await Task.WhenAll(tasks);
@@ -118,7 +127,10 @@ internal sealed class MmseqsHelperService
                     _logger.LogInformation("Redoing a3m generation for any missing ones...");
 
                     await a.GenerateA3msFromFastasGivenExistingMonoDbsAsync(
-                        inputFastaPaths, new[] { monoPath }, Array.Empty<string>(), outPath, new[] { a3mPath });
+                        inputFastaPaths, new[] { monoPath }, Array.Empty<string>(), a3mPath, new[] { a3mPath });
+
+                    await a.GetExistingResultsFromDatabaseAndNameThemAsync(inputFastaPaths, new[] { a3mPath }, outPath);
+
                     break;
                 }
             default:
@@ -140,17 +152,19 @@ internal sealed class MmseqsHelperService
         const int a3mBatchSizeHardcodedDefault = 1000;
         const int existingDbSearchParallelizationHardcodedDefault = 20;
 
+        
+
     var a = new ComputingStrategyConfiguration()
         {
             MaxDesiredMonoBatchSize = Helper.ParseIntOrDefault(_configuration["SearchMaxBatchSize"], monoBatchSizeHardcodedDefault),
             MaxDesiredPredictionTargetBatchSize = Helper.ParseIntOrDefault(_configuration["PairingMaxBatchSize"], a3mBatchSizeHardcodedDefault),
             ExistingDatabaseSearchParallelizationFactor = Helper.ParseIntOrDefault(_configuration["ExistingDbSearchParallelization"], existingDbSearchParallelizationHardcodedDefault),
             MmseqsSettings = GetMmseqsSettings(),
-            ReportSuccessfulUsageOfPersistedDb = true
+            ReportSuccessfulUsageOfPersistedDb = true,
+            DeleteTemporaryData = Helper.ParseBoolOrDefault(_configuration["DeleteTemporaryData"], true),
+            TempPath = _configuration["TempPath"]
     };
-
-        a.TempPath = _configuration["TempPath"];
-
+        
         return a;
 
     }

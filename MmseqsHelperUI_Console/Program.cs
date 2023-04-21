@@ -156,6 +156,7 @@ internal sealed class Program
                 options.SingleLine = true;
                 options.TimestampFormat = "[yyyy-MM-dd HH:mm:ss.fff]#";
                 options.IncludeScopes = false;
+                //options.UseUtcTimestamp
             });
         });
 

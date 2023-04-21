@@ -26,7 +26,8 @@ internal class MmseqsHelperModeColabfoldSearchMimic : MmseqsHelperMode
             {"UsePair",("true",false)},
             {"PairingMaxBatchSize",("1000",false)},
             {"SearchMaxBatchSize",("500",false)},
-            {"ExistingDbSearchParallelization",("20",false)}
+            {"ExistingDbSearchParallelization",("20",false)},
+            {"DeleteTemporaryData", ("true", false)}
 
         };
     }
@@ -45,9 +46,9 @@ Options are case-insensitive and can be prefixed with '/' '--' (recommended) or 
 ###################
 Options:
 ###################
-"
-            + string.Join("\n", defaults.Select(x => $"{x.Key} {x.Value.defaultValue}{(x.Value.required ? String.Empty : " [optional]")}"))
-            + @"
+ {string.Join(Environment.NewLine,
+     defaults.Select(x =>
+         $"{x.Key} {x.Value.defaultValue}{(x.Value.required ? String.Empty : " [optional]")}"))}        
 ###################";
     }
 }

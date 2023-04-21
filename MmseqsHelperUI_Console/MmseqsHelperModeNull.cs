@@ -25,8 +25,21 @@ Options are case-insensitive and can be prefixed with '/' '--' (recommended) or 
 ###################
 Commands:
 ###################
-auto-mono
-auto-pair
-###################";
+{string.Join(Environment.NewLine, Constants.AvailableModes.Select(x=>x.VerbString))}
+###################
+Example:
+colabfold-search-mimic --InputFastaPaths=""input.fasta"" --MmseqsBinaryPath=""mmseqs"" --UniprotDbPath=""/resources/colabfold/db/uniref30_2202_db"" --EnvDbPath=/resources/colabfold/db/colabfold_envdb --OutputPath=/path/to/out --PersistedResultsPath=""/path/to/persisted"" --TempPath=/path/to/temp --UseRamPreloading=false --UseEnv=true --UsePairing=true --UsePrecalculatedIndex=true --ThreadsPerMmseqsProcess=1 --DeleteTemporaryData=true
+###################"
+            ;
     }
+}
+
+internal static class Constants
+{
+    public static List<MmseqsHelperMode> AvailableModes = new List<MmseqsHelperMode>()
+    {
+        new MmseqsHelperModeGenerateMonoDbs("auto-mono"),
+        new MmseqsHelperModeGenerateA3mFilesForColabfold("auto-pair"),
+        new MmseqsHelperModeColabfoldSearchMimic("colabfold-search-mimic"),
+    };
 }

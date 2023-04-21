@@ -303,4 +303,42 @@ public static partial class Helper
         var subpaths = path.Substring(startThing.Length,path.Length - startThing.Length).Split(Path.DirectorySeparatorChar);
         return startThing + string.Join(Path.DirectorySeparatorChar, subpaths.Take(subpathLevels));
     }
+
+    public static async Task RecursiveDeleteDirectoryAsync(string dirPath)
+    {
+        var baseDir = new DirectoryInfo(dirPath);
+        await RecursiveDeleteDirectoryAsync(baseDir);
+    }
+
+    public static async Task RecursiveDeleteDirectoryAsync(DirectoryInfo baseDir, bool deleteReadOnly = false)
+    {
+        if (!baseDir.Exists)
+            return;
+
+        var containsReadOnlyChild = false;
+
+        foreach (var dir in baseDir.EnumerateDirectories())
+        {
+            await RecursiveDeleteDirectoryAsync(dir);
+        }
+        var files = baseDir.GetFiles();
+        foreach (var file in files)
+        {
+            if (deleteReadOnly)
+            {
+                file.IsReadOnly = false;
+            }
+            else
+            {
+                if (file.IsReadOnly)
+                {
+                    containsReadOnlyChild = true;
+                    continue;
+                }
+            }
+            file.Delete();
+        }
+        if (!containsReadOnlyChild) baseDir.Delete();
+    }
+
 }
