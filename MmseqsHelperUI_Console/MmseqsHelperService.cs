@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using System.Net.NetworkInformation;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MmseqsHelperLib;
 
@@ -40,6 +41,7 @@ internal sealed class MmseqsHelperService
         var persistedMonoDbConfig = GetPersistedMonoConfig();
         var computingConfig = GetComputingConfig();
         
+
         var settings = new ColabfoldMmseqsHelperSettings(
             searchDatabasesConfig: searchDbConfig,
             persistedA3MDbConfig: persistedA3MDbConfig,
@@ -47,7 +49,8 @@ internal sealed class MmseqsHelperService
             strategy: Strategy, 
             computingConfig: computingConfig,
             colabfoldMmseqsParams: colabfoldMmseqsParamsConfig,
-            colabfoldMmseqsParamsUnpairedSpecialForReferenceDb: colabfoldMmseqsParamsConfigRefDb);
+            colabfoldMmseqsParamsUnpairedSpecialForReferenceDb: colabfoldMmseqsParamsConfigRefDb
+            );
 
         var temp = _configuration["TempPath"]!;
         File.WriteAllText(Path.Join(temp,"allSettingsDump.json"), settings.ToJson());
@@ -139,6 +142,21 @@ internal sealed class MmseqsHelperService
         }
     }
 
+    private TrackingStrategyConfiguration GetTrackingConfig()
+    {
+        var idStrategy = Helper.ParseEnumOrDefault<TrackingStrategyConfiguration.ComputerIdentifierSourceStrategy>(_configuration["ComputerIdentificationStrategy"],
+            TrackingStrategyConfiguration.ComputerIdentifierSourceStrategy.HostName);
+        
+
+        var a = new TrackingStrategyConfiguration()
+        {
+            ComputerIdentifierSource = idStrategy
+        };
+
+        return a;
+
+    }
+
     private IssueHandlingStrategy GetStrategy()
     {
         var a = new IssueHandlingStrategy()
@@ -152,9 +170,10 @@ internal sealed class MmseqsHelperService
         const int a3mBatchSizeHardcodedDefault = 1000;
         const int existingDbSearchParallelizationHardcodedDefault = 20;
 
-        
+        var trackingConfig = GetTrackingConfig();
 
-    var a = new ComputingStrategyConfiguration()
+
+        var a = new ComputingStrategyConfiguration()
         {
             MaxDesiredMonoBatchSize = Helper.ParseIntOrDefault(_configuration["SearchMaxBatchSize"], monoBatchSizeHardcodedDefault),
             MaxDesiredPredictionTargetBatchSize = Helper.ParseIntOrDefault(_configuration["PairingMaxBatchSize"], a3mBatchSizeHardcodedDefault),
@@ -162,7 +181,8 @@ internal sealed class MmseqsHelperService
             MmseqsSettings = GetMmseqsSettings(),
             ReportSuccessfulUsageOfPersistedDb = true,
             DeleteTemporaryData = Helper.ParseBoolOrDefault(_configuration["DeleteTemporaryData"], true),
-            TempPath = _configuration["TempPath"]
+            TempPath = _configuration["TempPath"],
+            TrackingConfig = trackingConfig,
     };
         
         return a;

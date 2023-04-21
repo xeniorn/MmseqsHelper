@@ -27,8 +27,10 @@ public class ColabfoldMmseqsHelper
         ReferenceSourceDatabaseTarget = refDbTarget;
         MmseqsSourceDatabaseTargets = databaseTargets;
 
-        HelperDatabaseVersion = GetColabfoldMmseqsHelperDatabaseVersion();
-        MmseqsVersion = GetMmseqsVersion();
+        InstanceInfo.InitalizeFromSettings(Settings);
+
+        InstanceInfo.HelperDatabaseVersion = GetColabfoldMmseqsHelperDatabaseVersion();
+        InstanceInfo.MmseqsVersion = GetMmseqsVersion();
 
         MmseqsAdditionalOptionsForResultsThatGetHandledOutsideOfMmseqs = NonParametrizedMmseqsOptions.Combine(new[]
         {
@@ -37,9 +39,7 @@ public class ColabfoldMmseqsHelper
     }
 
     public NonParametrizedMmseqsOptions? MmseqsAdditionalOptionsForResultsThatGetHandledOutsideOfMmseqs { get;}
-
-    public string HelperDatabaseVersion { get; set; }
-
+    
     public MmseqsHelper Mmseqs { get; }
 
     public List<MmseqsSourceDatabaseTarget> MmseqsSourceDatabaseTargets { get; }
@@ -465,9 +465,9 @@ public class ColabfoldMmseqsHelper
         if (!IsMmseqsHelperDatabaseVersionCompatible(persistedA3mInfo.MmseqsHelperDatabaseVersion)) return false;
 
         // just exploring a bit how structured issue policy implementation might look like... Seems to take a lot of work.
-        if (persistedA3mInfo.MmseqsVersion != MmseqsVersion)
+        if (persistedA3mInfo.MmseqsVersion != InstanceInfo.MmseqsVersion)
         {
-            var message = $"Version of Mmseqs in persisted db ({persistedA3mInfo.MmseqsVersion}) and current ({MmseqsVersion}) do not match.";
+            var message = $"Version of Mmseqs in persisted db ({persistedA3mInfo.MmseqsVersion}) and current ({InstanceInfo.MmseqsVersion}) do not match.";
             var policy = Settings.Strategy.MmseqsVersionOfPersistedDatabaseIsLowerThanRunningVersion;
             if (policy.ActionsRequsted.Contains(IssueHandlingAction.Report))
             {
@@ -724,7 +724,7 @@ public class ColabfoldMmseqsHelper
             var pt = msaObject.PredictionTarget;
             LogSomething($"Writing {Helper.GetMultimerName(pt)} result with total length {pt.TotalLength} in {fullResultPath}...");
             await Helper.CreateDirectoryAsync(fullResultPath);
-            writeTasks.Add(msaObject.WriteToFileSystemAsync(Settings, fullResultPath, MmseqsVersion, HelperDatabaseVersion));
+            writeTasks.Add(msaObject.WriteToFileSystemAsync(Settings, fullResultPath, InstanceInfo));
             resultList.Add(msaObject.PredictionTarget);
         }
 
@@ -746,6 +746,8 @@ public class ColabfoldMmseqsHelper
 
         return resultList;
     }
+
+    public ColabfoldHelperComputationInstanceInfo InstanceInfo { get; set; } = new ();
 
     private async Task<string> GenerateAlignDbForPairingAsync(string workingDir, string qdbPath, string searchResultDb,
         MmseqsSourceDatabaseTarget dbTarget)
@@ -911,8 +913,8 @@ public class ColabfoldMmseqsHelper
         //******************************************* print out the database info *************************************
         var info = new PersistedMonoDbMetadataInfo(createTime: DateTime.Now,
             referenceDbTarget: ReferenceSourceDatabaseTarget, databaseTargets: MmseqsSourceDatabaseTargets,
-            mmseqsHelperDatabaseVersion: HelperDatabaseVersion, targetCount: proteinBatch.Count,
-            mmseqsVersion: MmseqsVersion);
+            mmseqsHelperDatabaseVersion: InstanceInfo.HelperDatabaseVersion, targetCount: proteinBatch.Count,
+            mmseqsVersion: InstanceInfo.MmseqsVersion);
         info.LoadLengths(proteinBatch);
 
         var infoPath = Path.Join(outDir, Settings.PersistedMonoDbConfig.InfoFilename);
@@ -935,8 +937,7 @@ public class ColabfoldMmseqsHelper
         }
 
     }
-
-    public string MmseqsVersion { get; init; }
+    
 
     /// <summary>
     /// Contains original data for each protein target, doesn't strip anything except the data terminator \0
@@ -1902,11 +1903,11 @@ public class ColabfoldMmseqsHelper
     private bool IsMmseqsHelperDatabaseVersionCompatible(string version)
     {
         //TODO: make this settable by strategy
-        if (version == HelperDatabaseVersion) return true;
+        if (version == InstanceInfo.HelperDatabaseVersion) return true;
 
-        if (Settings.DatabaseVersionCompatibilityMatrix.ContainsKey(HelperDatabaseVersion))
+        if (Settings.DatabaseVersionCompatibilityMatrix.ContainsKey(InstanceInfo.HelperDatabaseVersion))
         {
-            return Settings.DatabaseVersionCompatibilityMatrix[HelperDatabaseVersion].Contains(version);
+            return Settings.DatabaseVersionCompatibilityMatrix[InstanceInfo.HelperDatabaseVersion].Contains(version);
         }
         return false;
     }
@@ -1933,15 +1934,15 @@ public class ColabfoldMmseqsHelper
         var persistedMonoDbInfo = x!;
         if (!IsMmseqsHelperDatabaseVersionCompatible(persistedMonoDbInfo.MmseqsHelperDatabaseVersion))
         {
-            _logger.LogInformation($"Mono db at ({path}) incompatible version ({persistedMonoDbInfo.MmseqsHelperDatabaseVersion}) vs current ({HelperDatabaseVersion}).");
+            _logger.LogInformation($"Mono db at ({path}) incompatible version ({persistedMonoDbInfo.MmseqsHelperDatabaseVersion}) vs current ({InstanceInfo.HelperDatabaseVersion}).");
             return false;
         }
 
         // just exploring a bit how structured issue policy implementation might look like... Seems to take a lot of work. And space... 2023-04-17
-        if (persistedMonoDbInfo.MmseqsVersion != MmseqsVersion)
+        if (persistedMonoDbInfo.MmseqsVersion != InstanceInfo.MmseqsVersion)
         {
             var message =
-                $"Version of Mmseqs in persisted db ({persistedMonoDbInfo.MmseqsVersion}) and current ({MmseqsVersion}) do not match.";
+                $"Version of Mmseqs in persisted db ({persistedMonoDbInfo.MmseqsVersion}) and current ({InstanceInfo.MmseqsVersion}) do not match.";
             var policy = Settings.Strategy.MmseqsVersionOfPersistedDatabaseIsLowerThanRunningVersion;
             if (policy.ActionsRequsted.Contains(IssueHandlingAction.Report))
             {

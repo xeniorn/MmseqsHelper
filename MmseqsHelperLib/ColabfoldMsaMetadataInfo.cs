@@ -22,16 +22,22 @@ public class ColabfoldMsaMetadataInfo
 
     }
 
-    public ColabfoldMsaMetadataInfo(PredictionTarget predictionTarget, DateTime createTime, string mmseqsHelperDatabaseVersion, string mmseqsVersion)
+    public ColabfoldMsaMetadataInfo(PredictionTarget predictionTarget, DateTime createTime,
+         ColabfoldMmseqsHelperSettings settings,
+        ColabfoldHelperComputationInstanceInfo computationInstanceInfo)
     {
         PredictionTarget = predictionTarget;
         CreateTime = createTime;
-        MmseqsHelperDatabaseVersion = mmseqsHelperDatabaseVersion;
-        MmseqsVersion = mmseqsVersion;
+        MmseqsHelperDatabaseVersion = computationInstanceInfo.HelperDatabaseVersion ?? String.Empty;
+        MmseqsVersion = computationInstanceInfo.MmseqsVersion ?? String.Empty;
+
+        ComputationInfoReport = new ComputationInfoReport(settings, computationInstanceInfo);
     }
+    
 
     public string MmseqsHelperDatabaseVersion { get; set; }
     public string MmseqsVersion { get; set; }
+    public ComputationInfoReport ComputationInfoReport { get; private set; } = new ComputationInfoReport();
     public DateTime CreateTime { get; set; }
     public List<MsaOriginDefinition> MsaOriginDefinitions { get; set; } = new ();
     public PredictionTarget PredictionTarget { get; set; }
@@ -55,4 +61,30 @@ public class ColabfoldMsaMetadataInfo
             return null;
         }
     }
+}
+
+public class ComputationInfoReport
+{
+    public ComputationInfoReport()
+    {
+        
+    }
+
+    public Dictionary<string,string> Parameters { get; set; }
+
+    public ComputationInfoReport(ColabfoldMmseqsHelperSettings settings,
+        ColabfoldHelperComputationInstanceInfo instanceInfo)
+    {
+        InitStuffFromSettings(settings, instanceInfo);
+    }
+
+    private void InitStuffFromSettings(ColabfoldMmseqsHelperSettings settings, ColabfoldHelperComputationInstanceInfo instanceInfo)
+    {
+        Parameters = new Dictionary<string, string>
+        {
+            { "ComputerIdentifierSource", settings.ComputingConfig.TrackingConfig.ComputerIdentifierSource.ToString() },
+            { "ComputerIdentifier", instanceInfo.ComputerIdentifier.ToString() },
+        };
+    }
+
 }

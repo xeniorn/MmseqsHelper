@@ -29,7 +29,7 @@ public class ColabfoldMmseqsHelperSettings
         ComputingConfig = computingConfig;
         Strategy = strategy;
     }
-
+    
 
     public string ColabfoldComplexFastaMonomerSeparator { get; init; } = ":";
     

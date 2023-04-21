@@ -1,8 +1,11 @@
-﻿using System.Security.Cryptography;
+﻿using System.Net;
+using System.Net.NetworkInformation;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using AlphafoldPredictionLib;
 using FastaHelperLib;
+using Microsoft.Extensions.Logging;
 
 namespace MmseqsHelperLib;
 
@@ -18,11 +21,20 @@ public class ColabFoldMsaObject
     public PredictionTarget PredictionTarget { get; }
     private ColabfoldMsaMetadataInfo Metadata { get; set; }
     
-    public async Task WriteToFileSystemAsync(ColabfoldMmseqsHelperSettings settings, string targetFolder, string mmseqsVersion, string helperDatabaseVersion)
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="settings"></param>
+    /// <param name="targetFolder"></param>
+    /// <param name="instanceInfo"></param>
+    /// <returns></returns>
+    /// this is bad - it includes the ColabfoldHelper-specific object... but this is designed to be an implementation-agnostic representation of CFMsaObject.
+    /// TODO: refactor this
+    public async Task WriteToFileSystemAsync(ColabfoldMmseqsHelperSettings settings, string targetFolder, ColabfoldHelperComputationInstanceInfo instanceInfo)
     {
         Metadata = new ColabfoldMsaMetadataInfo(predictionTarget: PredictionTarget, createTime: DateTime.Now,
-            mmseqsHelperDatabaseVersion: helperDatabaseVersion,
-            mmseqsVersion: mmseqsVersion);
+            computationInstanceInfo: instanceInfo, 
+            settings: settings);
 
         var fullMsaPath = Path.Join(targetFolder, settings.PersistedA3mDbConfig.ResultA3mFilename);
         var fullInfoPath = Path.Join(targetFolder, settings.PersistedA3mDbConfig.A3mInfoFilename);
@@ -33,8 +45,6 @@ public class ColabFoldMsaObject
         };
         await Task.WhenAll(writeTasks);
     }
-
-    
 
     private byte[] GetBytes()
     {
@@ -159,5 +169,52 @@ public class ColabFoldMsaObject
                 yield return dataLine;
             }
         }
+    }
+}
+
+public class ColabfoldHelperComputationInstanceInfo
+{
+    public string HelperDatabaseVersion { get; set; }
+    public string? MmseqsVersion { get; set; }
+    public string ComputerIdentifier { get; set; }
+    
+    public void InitalizeFromSettings(ColabfoldMmseqsHelperSettings settings)
+    {
+        ComputerIdentifier = GetComputerId(settings.ComputingConfig.TrackingConfig);
+    }
+
+    private string GetComputerId(TrackingStrategyConfiguration trackingStrategy)
+    {
+        string identifier;
+
+        try
+        {
+            switch (trackingStrategy.ComputerIdentifierSource)
+            {
+                case TrackingStrategyConfiguration.ComputerIdentifierSourceStrategy.None:
+                    identifier = string.Empty; break;
+                case TrackingStrategyConfiguration.ComputerIdentifierSourceStrategy.FirstNetworkInterface:
+                    var ni = NetworkInterface.GetAllNetworkInterfaces().First();
+                    var niId = ni.Id;
+                    identifier = niId.ToString();
+                    break;
+                case TrackingStrategyConfiguration.ComputerIdentifierSourceStrategy.HostName:
+                    var ipProperties = IPGlobalProperties.GetIPGlobalProperties();
+                    var fqdn = string.Format("{0}{1}", ipProperties.HostName, string.IsNullOrWhiteSpace(ipProperties.DomainName) ? "" : $".{ipProperties.DomainName}" );
+                    identifier = fqdn;
+                    ;
+                    break;
+                default:
+                    throw new NotImplementedException();
+            }
+        }
+        catch (Exception ex)
+        {
+            //_logger.LogInformation("Failed to get computer identification based on strategy, will use empty identifier.");
+            trackingStrategy.ComputerIdentifierSource = TrackingStrategyConfiguration.ComputerIdentifierSourceStrategy.None;
+            identifier = string.Empty;
+        }
+
+        return identifier;
     }
 }

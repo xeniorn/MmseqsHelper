@@ -90,4 +90,12 @@ internal static class Helper
         if (success) return parsed;
         return defaultValue;
     }
+
+    public static T ParseEnumOrDefault<T>(string? input, T defaultValue) where T : Enum
+    {
+        if (string.IsNullOrWhiteSpace(input)) return defaultValue;
+        var success = Enum.TryParse(typeof(T), input, out var parsed);
+        if (success) return (T)parsed!;
+        return defaultValue;
+    }
 }
