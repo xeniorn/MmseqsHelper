@@ -133,6 +133,11 @@ internal sealed class Program
 
         hostBuilder.ConfigureAppConfiguration(builder =>
         {
+            //1: hardcoded defaults
+            //2: app json files
+            //3: env vars
+            //4: command line
+            // later sources overrwrite previous ones
             builder.Sources.Clear();
             builder.AddInMemoryCollection(defaultConfig);
             providedConfigPaths?.ForEach(x => builder.AddJsonFile(x, optional: true, reloadOnChange: false));

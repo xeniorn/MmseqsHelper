@@ -24,6 +24,9 @@ internal class MmseqsHelperModeGenerateA3mFilesForColabfold : MmseqsHelperMode
             {"ThreadsPerMmseqsProcess", ("1",false) },
             {"PreLoadDb", ("false",false)},
             {"UsePrecalculatedIndex",("true",false)},
+            {"PairingMaxBatchSize",("1000",false)},
+            {"SearchMaxBatchSize",("500",false)},
+            {"ExistingDbSearchParallelization",("20",false)},
             {"DeleteTemporaryData", ("true", false)}
         };
     }

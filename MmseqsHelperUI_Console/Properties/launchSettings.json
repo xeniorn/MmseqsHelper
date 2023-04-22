@@ -14,7 +14,7 @@
     },
     "testColabSearch": {
       "commandName": "Project",
-      "commandLineArgs": "colabfold-search-mimic\r\n--InputFastaPaths=\"C:\\temp\\mmseqs_test\\problematic.fasta\"\r\n--MmseqsBinaryPath=\"C:\\Users\\juraj.ahel\\source\\repos\\xeniorn\\AlphafoldHelper\\ConsoleTester\\bin\\Debug\\net6.0\\ConsoleTester.exe\"\r\n--UniprotDbPath=\"\\\\storage.imp.ac.at\\resources\\colabfold\\UniRef30_2022_02\\uniref30_2202_db\"\r\n--EnvDbPath=colabfold_envdb_202108_db\r\n--OutputPath=C:\\temp\\mmseqs_test\\out\\colab_searchX\r\n--PersistedResultsPath=\"C:\\temp\\mmseqs_test\\colab_search\"\r\n--TempPath=C:\\temp\\mmseqs_test\\temp\\pair\r\n--UseRamPreloading=false\r\n--UseEnv=false\r\n--UsePairing=false\r\n--UsePrecalculatedIndex=1\r\n--ThreadsPerMmseqsProcess=1\r\n--DeleteTemporaryData=0\r\n"
+      "commandLineArgs": "colabfold-search-mimic\r\n--InputFastaPaths=\"C:\\temp\\mmseqs_test\\all_y_pair.fasta\"\r\n--MmseqsBinaryPath=\"C:\\Users\\juraj.ahel\\source\\repos\\xeniorn\\AlphafoldHelper\\ConsoleTester\\bin\\Debug\\net6.0\\ConsoleTester.exe\"\r\n--UniprotDbPath=\"\\\\storage.imp.ac.at\\resources\\colabfold\\UniRef30_2022_02\\uniref30_2202_db\"\r\n--EnvDbPath=colabfold_envdb_202108_db\r\n--OutputPath=C:\\temp\\mmseqs_test\\out\\colab_searchX\r\n--PersistedResultsPath=\"C:\\temp\\mmseqs_test\\colab_search\"\r\n--TempPath=C:\\temp\\mmseqs_test\\temp\\pair\r\n--UseRamPreloading=false\r\n--UseEnv=false\r\n--UsePairing=false\r\n--UsePrecalculatedIndex=1\r\n--ThreadsPerMmseqsProcess=1\r\n--DeleteTemporaryData=0\r\n--PairingMaxBatchSize=10\r\n"
     },
     "testEmpty": {
       "commandName": "Project"
