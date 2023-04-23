@@ -102,71 +102,71 @@ public class ColabFoldMsaObject
             var isEmpty = !pairLines.Any();
             if (!isEmpty)
             {
-                Metadata.MsaOriginDefinitions.Add(new MsaOriginDefinition(startLine, endLine, entry.SourceDatabaseTarget, true, false));
+                Metadata.MsaOriginDefinitions.Add(new MsaOriginDefinition(startLine, endLine, entry.SourceDatabaseTarget, PredictionTarget.UniqueProteins, true, false));
             }
             else
             {
-                Metadata.MsaOriginDefinitions.Add(new MsaOriginDefinition(-1, -1, entry.SourceDatabaseTarget, true, true));
+                Metadata.MsaOriginDefinitions.Add(new MsaOriginDefinition(-1, -1, entry.SourceDatabaseTarget, PredictionTarget.UniqueProteins, true, true));
             }
             
             lines.AddRange(pairLines);
         }
 
-        foreach (var entry in DataEntries.Where(x => x.DataType == ColabfoldMsaDataType.Unpaired))
+        foreach (var protein in PredictionTarget.UniqueProteins)
         {
-            var nextAvailableLine = lines.Count();
-            var unpairedLines = GetUnpairedLines(entry.DataDict).ToList();
-
-            var startLine = nextAvailableLine;
-            var endLine = nextAvailableLine + unpairedLines.Count - 1;
-            
-            var isEmpty = !unpairedLines.Any();
-            if (!isEmpty)
+            foreach (var entry in DataEntries.Where(x => x.DataType == ColabfoldMsaDataType.Unpaired))
             {
-                Metadata.MsaOriginDefinitions.Add(new MsaOriginDefinition(startLine, endLine, entry.SourceDatabaseTarget, false, false));
-            }
-            else
-            {
-                Metadata.MsaOriginDefinitions.Add(new MsaOriginDefinition(-1, -1, entry.SourceDatabaseTarget, false, true));
-            }
+                var nextAvailableLine = lines.Count();
+                var unpairedLines = GetUnpairedLines(entry.DataDict, protein).ToList();
 
-            lines.AddRange(unpairedLines);
+                var startLine = nextAvailableLine;
+                var endLine = nextAvailableLine + unpairedLines.Count - 1;
+
+                var isEmpty = !unpairedLines.Any();
+                if (!isEmpty)
+                {
+                    Metadata.MsaOriginDefinitions.Add(new MsaOriginDefinition(startLine, endLine, entry.SourceDatabaseTarget, new List<Protein>(){ protein } , false, false));
+                }
+                else
+                {
+                    Metadata.MsaOriginDefinitions.Add(new MsaOriginDefinition(-1, -1, entry.SourceDatabaseTarget, new List<Protein>() { protein }, false, true));
+                }
+
+                lines.AddRange(unpairedLines);
+            }
         }
-        
+
         // don't forget the terminal newline
         return $"{string.Join("\n", lines)}\n";
 
     }
 
-    private IEnumerable<string> GetUnpairedLines(Dictionary<Protein, byte[]> unpairedData)
+    private IEnumerable<string> GetUnpairedLines(Dictionary<Protein, byte[]> unpairedData, Protein protein)
     {
-        foreach (var predictionTargetUniqueProtein in PredictionTarget.UniqueProteins)
+        const char fastaGapSymbol = '-';
+
+        var unpairedLineList = Encoding.ASCII.GetString(unpairedData[protein]).Split("\n");
+
+        var index = PredictionTarget.UniqueProteins.IndexOf(protein);
+        var lengthProteinsBefore = PredictionTarget.UniqueProteins.Where((_, i) => i < index).Select(x => x.Sequence.Length).Sum();
+        var lengthProteinsAfter = PredictionTarget.UniqueProteins.Where((_, i) => i > index).Select(x => x.Sequence.Length).Sum();
+
+        var dataPreAppendGap = new string(fastaGapSymbol, lengthProteinsBefore);
+        var dataPostAppendGap = new string(fastaGapSymbol, lengthProteinsAfter);
+
+        var lineCount = unpairedLineList.Length;
+        var entryCount = lineCount / 2;
+
+        for (var entry = 0; entry < entryCount; entry++)
         {
-            const char fastaGapSymbol = '-';
+            var headerIndex = 2 * entry;
+            var dataIndex = headerIndex + 1;
 
-            var unpairedLineList = Encoding.ASCII.GetString(unpairedData[predictionTargetUniqueProtein]).Split("\n");
+            var headerLine = unpairedLineList[headerIndex].Trim();
+            var dataLine = string.Join("", dataPreAppendGap, unpairedLineList[dataIndex], dataPostAppendGap);
 
-            var index = PredictionTarget.UniqueProteins.IndexOf(predictionTargetUniqueProtein);
-            var lengthProteinsBefore = PredictionTarget.UniqueProteins.Where((_, i) => i < index).Select(x => x.Sequence.Length).Sum();
-            var lengthProteinsAfter = PredictionTarget.UniqueProteins.Where((_, i) => i > index).Select(x => x.Sequence.Length).Sum();
-
-            var dataPreAppendGap = new string(fastaGapSymbol, lengthProteinsBefore);
-            var dataPostAppendGap = new string(fastaGapSymbol, lengthProteinsAfter);
-
-            var lineCount = unpairedLineList.Length;
-            var entryCount = lineCount / 2;
-
-            for (var entry = 0; entry < entryCount; entry++)
-            {
-                var headerIndex = 2 * entry;
-                var dataIndex = headerIndex + 1;
-
-                var headerLine = unpairedLineList[headerIndex].Trim();
-                var dataLine = string.Join("", dataPreAppendGap, unpairedLineList[dataIndex], dataPostAppendGap);
-
-                yield return headerLine;
-                yield return dataLine;
-            }
+            yield return headerLine;
+            yield return dataLine;
         }
     }
 }

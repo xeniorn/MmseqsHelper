@@ -172,7 +172,7 @@ public class ColabfoldMmseqsHelper
 
         }
 
-        var successful = existingTargets.Except(failSet).ToList();
+        var successful = allTargets.Except(failSet).ToList();
         return successful;
     }
 

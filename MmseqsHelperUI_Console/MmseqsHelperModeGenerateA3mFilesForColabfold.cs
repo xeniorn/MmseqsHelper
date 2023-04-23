@@ -8,26 +8,26 @@ internal class MmseqsHelperModeGenerateA3mFilesForColabfold : MmseqsHelperMode
         Process = MmseqsAutoProcess.GenerateA3mFilesForColabfold;
     }
 
-    public override Dictionary<string, (string defaultValue, bool required)> GetDefaults()
+    public override Dictionary<string, (string defaultValue, bool required, string description)> GetDefaults()
     {
-        return new Dictionary<string, (string defaultValue, bool required)>()
+        return new()
         {
-            { "InputFastaPaths", ("\"fasta1,fasta2,fasta3\"", true) },
-            { "PersistedMonoDatabasePaths", ("\"/path/to/existing/db1/,/path/to/existing/db2/,/path/to/existing/db3/\"", true) },
-            { "PersistedA3mResultDatabasePaths", ("\"/path/to/existing/a3mdb/\"", false)},
-            { "MmseqsBinaryPath", ("./mmseqs", true) },
-            { "UniprotDbPath", ("/resources/colabfold/UniRef30_2022_02/uniref30_2202_db", true) },
-            { "EnvDbPath", ("/resources/colabfold/UniRef30_2022_02/colabfold_envdb_202108_db", true) },
-            { "OutputPath", ("./output/", true) },
-            { "TempPath", ("./tmp/", false)},
-            { "ExclusionFilePath",(String.Empty,false)},
-            {"ThreadsPerMmseqsProcess", ("1",false) },
-            {"PreLoadDb", ("false",false)},
-            {"UsePrecalculatedIndex",("true",false)},
-            {"PairingMaxBatchSize",("1000",false)},
-            {"SearchMaxBatchSize",("500",false)},
-            {"ExistingDbSearchParallelization",("20",false)},
-            {"DeleteTemporaryData", ("true", false)}
+            { "InputFastaPaths", ("\"fasta1,fasta2,fasta3\"", true, @"") },
+            { "PersistedMonoDatabasePaths", ("\"/path/to/existing/db1/,/path/to/existing/db2/,/path/to/existing/db3/\"", true, @"") },
+            { "PersistedA3mResultDatabasePaths", ("\"/path/to/existing/a3mdb/\"", false, @"")},
+            { "MmseqsBinaryPath", ("./mmseqs", true, @"") },
+            { "UniprotDbPath", ("/resources/colabfold/UniRef30_2022_02/uniref30_2202_db", true, @"") },
+            { "EnvDbPath", ("/resources/colabfold/UniRef30_2022_02/colabfold_envdb_202108_db", true, @"") },
+            { "OutputPath", ("./output/", true, @"") },
+            { "TempPath", ("./tmp/", false, @"")},
+            { "ExclusionFilePath",(String.Empty,false, @"")},
+            {"ThreadsPerMmseqsProcess", ("1",false, @"") },
+            {"PreLoadDb", ("false",false, @"")},
+            {"UsePrecalculatedIndex",("true",false, @"")},
+            {"PairingMaxBatchSize",("1000",false, @"")},
+            {"SearchMaxBatchSize",("500",false, @"")},
+            {"ExistingDbSearchParallelization",("20",false, @"")},
+            {"DeleteTemporaryData", ("true", false, @"")}
         };
     }
 

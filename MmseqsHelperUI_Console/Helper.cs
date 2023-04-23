@@ -48,7 +48,7 @@ internal static class Helper
 
     }
 
-    public static string GetConfigJsonFromDefaults(Dictionary<string, (string preset, bool required)> defaults)
+    public static string GetConfigJsonFromDefaults(Dictionary<string, (string preset, bool required, string description)> defaults)
     {
         var values = String.Join(",\n", defaults.Select(x => $"{Jsonize(x.Key)} : {Jsonize(x.Value.preset)}"));
 
