@@ -1,5 +1,9 @@
 ﻿using System.Diagnostics;
+using System.Net.WebSockets;
+using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.RegularExpressions;
+using System.Xml;
 using AlphafoldPredictionLib;
 using FastaHelperLib;
 
@@ -341,4 +345,22 @@ public static partial class Helper
         if (!containsReadOnlyChild) baseDir.Delete();
     }
 
+
+    private static class FileFriendlyIdRectifier
+    {
+        public const string removeCharsRegexString = @"[^A-Za-z0-9-_.:]";
+        public const string toDashRegexSring = @"[-_.:]";
+        public static Regex RemoveCharsRegex = new Regex(removeCharsRegexString);
+        public static Regex ToDashRegex = new Regex(toDashRegexSring);
+    }
+
+    
+
+    public static string GetFileFriendlyId(string input)
+    {
+        var res = FileFriendlyIdRectifier.RemoveCharsRegex.Replace(input, "");
+        var res2 = FileFriendlyIdRectifier.ToDashRegex.Replace(res, "_");
+
+        return res2;
+    }
 }

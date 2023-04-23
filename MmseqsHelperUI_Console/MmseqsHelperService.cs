@@ -53,6 +53,7 @@ internal sealed class MmseqsHelperService
             );
 
         var temp = _configuration["TempPath"]!;
+        await MmseqsHelperLib.Helper.CreateDirectoryAsync(temp);
         File.WriteAllText(Path.Join(temp,"allSettingsDump.json"), settings.ToJson());
         
         switch (mode.Process)

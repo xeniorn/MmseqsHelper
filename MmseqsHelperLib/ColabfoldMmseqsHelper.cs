@@ -55,12 +55,17 @@ public class ColabfoldMmseqsHelper
 
         // rectify all targets, giving them standard ordering, capitalization, and referencing the same set of Protein instances
         _logger.LogInformation("Getting a list of protein targets from inputs...");
-        var rectifiedPredictionTargets = await GetRectifiedTargetPredictionsAsync(inputPathsList, new List<string>());
-        _logger.LogInformation($"{rectifiedPredictionTargets.Count} unique targets found.");
+        var rectifiedPredictionTargets = await GetRectifiedTargetPredictionsAsync(inputPathsList);
+
+        var uniqueRectifiedPredictionTargets = rectifiedPredictionTargets.DistinctBy(Helper.GetAutoHashIdWithoutMultiplicity).ToList();
+        _logger.LogInformation($"{rectifiedPredictionTargets.Count} targets found ({uniqueRectifiedPredictionTargets.Count} unique).");
+        
+        if (!rectifiedPredictionTargets.Any()) return;
+
 
         //TODO: report on older versions of results too
         _logger.LogInformation($"Checking if any targets have existing predictions...");
-        var (existingTargets, missingTargets) = await GetExistingAndMissingPredictionTargetsAsync(rectifiedPredictionTargets, persistedA3mPathsList);
+        var (existingTargets, missingTargets) = await GetExistingAndMissingPredictionTargetsAsync(uniqueRectifiedPredictionTargets, persistedA3mPathsList);
         
         if (missingTargets.Any())
         {
@@ -74,34 +79,100 @@ public class ColabfoldMmseqsHelper
         var fullOutputDir = Path.Join(outputPath, shortBatchId);
 
         _logger.LogInformation($"Copying files from persisted database to output ({fullOutputDir})...");
-        var allSuccessful = await CopyA3mResultsFromDbToTargetAsync(existingTargets, persistedA3mPathsList, fullOutputDir);
+        var allSuccessful = await CopyA3mResultsFromDbToTargetAsync( rectifiedPredictionTargets, existingTargets, persistedA3mPathsList, fullOutputDir);
 
         _logger.LogInformation($"Number of MSA obtained: {allSuccessful.Count}/{rectifiedPredictionTargets.Count}");
     }
 
-    private async Task<List<PredictionTarget>> CopyA3mResultsFromDbToTargetAsync(List<PredictionTarget> existingTargets, List<string> persistedA3mPathsList, string outputDir)
+    private async Task<List<PredictionTarget>> CopyA3mResultsFromDbToTargetAsync(List<PredictionTarget> allTargets, List<PredictionTarget> existingTargets, List<string> persistedA3mPathsList, string outputDir)
     {
-        var mapping = await GetPredictionTargetToExistingDbPathMappingAsync(existingTargets, persistedA3mPathsList);
+        var uniqueExistingTargets = existingTargets.DistinctBy(Helper.GetAutoHashIdWithoutMultiplicity).ToList();
+        var mapping = await GetPredictionTargetToExistingDbPathMappingAsync(uniqueExistingTargets, persistedA3mPathsList);
 
         var copyTasks = new List<Task>();
 
-        await Helper.CreateDirectoryAsync(outputDir);
+        var destination1 = Path.Join(outputDir, "sequential");
+        var destination2 = Path.Join(outputDir, "header");
+
+        await Helper.CreateDirectoryAsync(destination1);
+        await Helper.CreateDirectoryAsync(destination2);
 
         var counter = 0;
-        foreach (var (target, existingDbPath) in mapping)
+
+        var failSet = new HashSet<PredictionTarget>();
+
+        var idCounts = new Dictionary<string, int>();
+
+        const string emptyName = "invalid_fasta_header";
+        const int maxFileBaseLength = 30;
+
+        var copyBatches = GetBatches(allTargets, 100);
+
+        foreach (var batch in copyBatches)
         {
-            //TODO: hardcoded, ewww
-            var sourcePath = Path.Join(existingDbPath, Settings.PersistedA3mDbConfig.ResultA3mFilename);
-            var name = counter + ".a3m";
-            var trueName = target.AutoId + ".a3m";
-            var destinationPath = Path.Join(outputDir, name);
-            var otherDestinationPath = Path.Join(outputDir, trueName);
-            copyTasks.Add(Helper.CopyFileIfExistsAsync(sourcePath, destinationPath));
-            copyTasks.Add(Helper.CopyFileIfExistsAsync(sourcePath, otherDestinationPath));
-            counter++;
+            _logger.LogInformation($"Saving batch {counter}-{counter + batch.Count - 1}...");
+
+            foreach (var target in batch)
+            {
+                var fileFriendlyIdOrig = Helper.GetFileFriendlyId(target.UserProvidedId);
+                var fileFriendlyId =
+                    fileFriendlyIdOrig.Substring(0, Math.Min(maxFileBaseLength, fileFriendlyIdOrig.Length));
+                var id = string.IsNullOrWhiteSpace(fileFriendlyId) ? emptyName : fileFriendlyId;
+
+                idCounts.TryAdd(id, 0);
+                idCounts[id] = idCounts[id] + 1;
+
+                var trueNameBase = idCounts[id] == 1 ? id : $"{id}_{idCounts[id]}";
+
+                var matchedUniqueTarget = uniqueExistingTargets.SingleOrDefault(x =>
+                    Helper.GetAutoHashIdWithoutMultiplicity(x) == Helper.GetAutoHashIdWithoutMultiplicity(target));
+
+                if (matchedUniqueTarget is not null)
+                {
+                    var existingDbPath = mapping.Single(x => x.target == matchedUniqueTarget).dbPath;
+
+                    //TODO: hardcoded, ewww
+                    var sourcePath = Path.Join(existingDbPath, Settings.PersistedA3mDbConfig.ResultA3mFilename);
+                    var name = counter + ".a3m";
+                    var trueName = trueNameBase + ".a3m";
+
+                    var destinationPath = Path.Join(destination1, name);
+                    var otherDestinationPath = Path.Join(destination2, trueName);
+
+                    bool fail1, fail2;
+
+                    try
+                    {
+                        copyTasks.Add(Helper.CopyFileIfExistsAsync(sourcePath, destinationPath));
+                        fail1 = false;
+                    }
+                    catch (Exception ex)
+                    {
+                        fail1 = true;
+                    }
+
+                    try
+                    {
+                        copyTasks.Add(Helper.CopyFileIfExistsAsync(sourcePath, otherDestinationPath));
+                        fail2 = false;
+                    }
+                    catch (Exception ex)
+                    {
+                        fail2 = true;
+                    }
+
+                    if (fail1 && fail2) failSet.Add(target);
+                }
+
+                counter++;
+            }
+
+            await Task.WhenAll(copyTasks);
+            copyTasks.Clear();
+
         }
 
-        var successful = existingTargets;
+        var successful = existingTargets.Except(failSet).ToList();
         return successful;
     }
 
@@ -125,11 +196,21 @@ public class ColabfoldMmseqsHelper
 
         // rectify all targets, giving them standard ordering, capitalization, and referencing the same set of Protein instances
         _logger.LogInformation("Getting a list of protein targets from inputs...");
-        var rectifiedPredictionTargets = await GetRectifiedTargetPredictionsAsync(inputPathsList, excludedHashList);
-        _logger.LogInformation($"{rectifiedPredictionTargets.Count} unique targets found.");
+        var rectifiedPredictionTargets = await GetRectifiedTargetPredictionsAsync(inputPathsList);
+        var uniqueRectifiedPredictionTargets = rectifiedPredictionTargets.DistinctBy(Helper.GetAutoHashIdWithoutMultiplicity).ToList();
+        _logger.LogInformation($"{rectifiedPredictionTargets.Count} targets found ({uniqueRectifiedPredictionTargets.Count} unique).");
+
+        var skippedTargets = uniqueRectifiedPredictionTargets.Where(x => excludedHashList.Contains(Helper.GetAutoHashIdWithoutMultiplicity(x))).ToList();
+        var nonSkippedUniqueTargets = uniqueRectifiedPredictionTargets.Except(skippedTargets).ToList();
+
+        if (skippedTargets.Any())
+        {
+            _logger.LogInformation($"Some unique inputs ({skippedTargets.Count}) were excluded based on the provided exclusion id list.");
+        }
+
 
         _logger.LogInformation($"Checking if any targets have existing predictions...");
-        var (existingTargets, missingTargets) = await GetExistingAndMissingPredictionTargetsAsync(rectifiedPredictionTargets, persistedA3mPathsList);
+        var (existingTargets, missingTargets) = await GetExistingAndMissingPredictionTargetsAsync(nonSkippedUniqueTargets, persistedA3mPathsList);
 
         if (!missingTargets.Any())
         {
@@ -696,7 +777,8 @@ public class ColabfoldMmseqsHelper
         }
 
         //*******************************************perform pairing*******************************************************
-        LogSomething($"Performing MSA pairing...");
+        if (MmseqsSourceDatabaseTargets.Any(x=>x.UseForPaired)) LogSomething($"Performing MSA pairing...");
+
         //TODO: for now I anyhow have only uniref for pairing, but this can be parallelized for all paired dbs, do this parallelization!
         foreach (var dbTarget in MmseqsSourceDatabaseTargets.Where(x => x.UseForPaired))
         {
@@ -1551,64 +1633,36 @@ public class ColabfoldMmseqsHelper
 
     private async Task<List<Protein>> GetProteinTargetsForMonoDbSearchAsync(IEnumerable<string> inputFastaPaths, IEnumerable<string> excludeIds)
     {
-        var preds = await GetRectifiedTargetPredictionsAsync(inputFastaPaths.ToList(), excludeIds.ToList());
-        var proteinsInPreds = preds.SelectMany(x => x.UniqueProteins).Distinct().ToList();
+        var excludeList = excludeIds.ToList();
+
+        var uniquePreds = (await GetRectifiedTargetPredictionsAsync(inputFastaPaths.ToList())).Distinct();
+        var excluded = uniquePreds.Where(x => excludeList.Contains(Helper.GetAutoHashIdWithoutMultiplicity(x))).ToList();
+        var proteinsInPreds = uniquePreds.Except(excluded).SelectMany(x => x.UniqueProteins).Distinct().ToList();
+
         return proteinsInPreds;
-
-        //var uniqueProteins = new HashSet<Protein>(new ProteinByIdComparer());
-
-        //var excludedList = excludeIds.ToList();
-
-        //foreach (var inputFastaPath in inputFastaPaths)
-        //{
-        //    if (!File.Exists(inputFastaPath))
-        //    {
-        //        _logger.LogWarning($"Provided input path does not exist, will skip it: {inputFastaPath}");
-        //        continue;
-        //    }
-
-        //    await using var stream = File.OpenRead(inputFastaPath);
-        //    var fastas = await FastaHelper.GetFastaEntriesIfValidAsync(stream, SequenceType.Protein);
-        //    if (fastas is not null && fastas.Any())
-        //    {
-        //        foreach (var fastaEntry in fastas)
-        //        {
-        //            var protein = new Protein()
-        //                { Id = Helper.GetMd5Hash(fastaEntry.Sequence), Sequence = fastaEntry.Sequence };
-        //            if (!excludedList.Contains(protein.Id))
-        //            {
-        //                uniqueProteins.Add(protein);
-        //            }
-        //        }
-        //    }
-        //}
-
-        //return uniqueProteins.ToList();
-
     }
 
     /// <summary>
-    /// Will load up targets from the source fasta files, make it so that same prot sequences refer to same Protein instances, and remove any duplicate target.
-    /// Within each target, the ordering will be clearly defined based on constituents, sorted first by sequence length then lexically
+    /// Will load up targets from the source fasta files, make it so that same prot sequences refer to same Protein instances, keeping duplicates.
+    /// Within each target, the ordering will be clearly defined based on constituents, sorted first by sequence length then lexically.
     /// </summary>
     /// <param name="inputPathsList"></param>
     /// <param name="excludedIds"></param>
     /// <returns></returns>
-    private async Task<List<PredictionTarget>> GetRectifiedTargetPredictionsAsync(List<string> inputPathsList, List<string> excludedIds)
+    private async Task<List<PredictionTarget>> GetRectifiedTargetPredictionsAsync(List<string> inputPathsList)
     {
         var monos = new HashSet<Protein>();
 
-        var excludedList = excludedIds.ToList();
+        
 
         var rectifiedTargets = new List<(string hash, PredictionTarget target)>();
         var duplicateTargets = new List<PredictionTarget>();
-        var skippedTargets = new List<PredictionTarget>();
 
         var importer = new Importer();
 
         foreach (var inputFastaPath in inputPathsList)
         {
-            var stream = File.OpenRead(inputFastaPath);
+            await using var stream = File.OpenRead(inputFastaPath);
             var fastaEntries = await FastaHelper.GetFastaEntriesIfValidAsync(stream, SequenceType.Protein, keepCharacters: Settings.ColabfoldComplexFastaMonomerSeparator);
             if (fastaEntries is not null)
             {
@@ -1640,31 +1694,19 @@ public class ColabfoldMmseqsHelper
                     var found = index >= 0;
                     if (found)
                     {
-                        duplicateTargets.Add(rectifiedPrediction);
+                        var existingPrediction = rectifiedTargets[index].target;
+                        duplicateTargets.Add(existingPrediction);
                     }
-                    else
-                    {
-                        if (!excludedList.Contains(predictionHash))
-                        {
-                            rectifiedTargets.Add((predictionHash, rectifiedPrediction));
-                        }
-                        else
-                        {
-                            skippedTargets.Add(rectifiedPrediction);
-                        }
-                    }
+                    
+                    rectifiedTargets.Add((predictionHash, rectifiedPrediction));
+                    
                 }
             }
         }
 
         if (duplicateTargets.Any())
         {
-            _logger.LogInformation($"Some inputs ({duplicateTargets.Count}) map to identical predictions, those will be skipped.");
-        }
-
-        if (skippedTargets.Any())
-        {
-            _logger.LogInformation($"Some inputs ({skippedTargets.Count}) were excluded based on the provided exclusion id list.");
+            _logger.LogInformation($"Some inputs ({duplicateTargets.Count}) map to identical predictions.");
         }
 
         var targets = rectifiedTargets.Select(x => x.target).ToList();
