@@ -116,6 +116,8 @@ internal sealed class Program
         }
         catch (Exception ex)
         {
+            Console.WriteLine(selectedMode.GetHelpString(DefaultEnvVarPrefix, DefaultConfigFileName));
+
             var message =
                 $"Something went wrong and the program didn't know how to automatically handle it. Info below:\n\n{ex.Message}";
             Console.WriteLine(message);

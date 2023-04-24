@@ -18,7 +18,7 @@
     },
     "testEmpty": {
       "commandName": "Project",
-      "commandLineArgs": "colabfold-search-mimic --help"
+      "commandLineArgs": "colabfold-search-mimic"
     }
   }
 }

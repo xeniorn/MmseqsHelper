@@ -48,7 +48,7 @@ Options:
 ###################
  {string.Join(Environment.NewLine,
      defaults.Select(x =>
-         $"{x.Key}\t{(x.Value.required ? String.Empty : $" [optional]:\t{x.Value.description}")}\t(DEFAULT: {x.Value.defaultValue})")) }        
+         $"{x.Key} {(x.Value.required ? String.Empty : $" [optional]: {x.Value.description}")} (DEFAULT: {x.Value.defaultValue})")) }        
 ###################";
     }
 }

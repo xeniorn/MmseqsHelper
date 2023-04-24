@@ -45,7 +45,7 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
 FROM debian:stable-slim as base
 
 RUN apt-get update && apt-get install -y \
-      gawk bash grep libstdc++6 libgomp1 libatomic1 zlib1g libbz2-1.0 wget tar \
+      gawk bash grep libstdc++6 libgomp1 libatomic1 zlib1g libbz2-1.0 wget tar less \
     && rm -rf /var/lib/apt/lists/*
 
 
@@ -63,4 +63,4 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
 	ln -s /usr/local/bin/${APP}_arch ${final_path_entrypoint}; \
 	fi
 
-ENTRYPOINT ["${final_path_entrypoint}"]
+ENTRYPOINT [ "/usr/local/bin/mmseqs" ]

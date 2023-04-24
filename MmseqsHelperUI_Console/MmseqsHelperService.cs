@@ -167,8 +167,8 @@ internal sealed class MmseqsHelperService
 
     private ComputingStrategyConfiguration GetComputingConfig()
     {
-        const int monoBatchSizeHardcodedDefault = 500;
-        const int a3mBatchSizeHardcodedDefault = 1000;
+        const int monoBatchSizeHardcodedDefault = 1000;
+        const int a3mBatchSizeHardcodedDefault = 5000;
         const int existingDbSearchParallelizationHardcodedDefault = 20;
 
         var trackingConfig = GetTrackingConfig();
