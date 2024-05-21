@@ -1,7 +1,4 @@
-﻿using System.Linq;
-using System.Text.Json;
-using System.Xml;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 
 namespace MmseqsHelperUI_Console;
 

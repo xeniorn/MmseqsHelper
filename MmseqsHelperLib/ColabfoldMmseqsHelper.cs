@@ -1,12 +1,6 @@
-﻿using AlphafoldPredictionLib;
-using FastaHelperLib;
+﻿using FastaHelperLib;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using System.ComponentModel.DataAnnotations;
-using System.Diagnostics.Metrics;
-using System.Linq;
 using System.Text;
-using System.Xml.XPath;
 
 namespace MmseqsHelperLib;
 
@@ -84,7 +78,7 @@ public class ColabfoldMmseqsHelper
         _logger.LogInformation($"Number of MSA obtained: {allSuccessful.Count}/{rectifiedPredictionTargets.Count}");
     }
 
-    private async Task<List<PredictionTarget>> CopyA3mResultsFromDbToTargetAsync(List<PredictionTarget> allTargets, List<PredictionTarget> existingTargets, List<string> persistedA3mPathsList, string outputDir)
+    private async Task<List<IProteinPredictionTarget>> CopyA3mResultsFromDbToTargetAsync(List<IProteinPredictionTarget> allTargets, List<IProteinPredictionTarget> existingTargets, List<string> persistedA3mPathsList, string outputDir)
     {
         var uniqueExistingTargets = existingTargets.DistinctBy(Helper.GetAutoHashIdWithoutMultiplicity).ToList();
         var mapping = await GetPredictionTargetToExistingDbPathMappingAsync(uniqueExistingTargets, persistedA3mPathsList);
@@ -99,7 +93,7 @@ public class ColabfoldMmseqsHelper
 
         var counter = 0;
 
-        var failSet = new HashSet<PredictionTarget>();
+        var failSet = new HashSet<IProteinPredictionTarget>();
 
         var idCounts = new Dictionary<string, int>();
 
@@ -258,7 +252,7 @@ public class ColabfoldMmseqsHelper
 
         _logger.LogInformation($"Will attempt to generate MSA results for ({predictableTargets.Count}/{missingTargets.Count}) targets.");
 
-        var allSuccessful = new List<PredictionTarget>();
+        var allSuccessful = new List<IProteinPredictionTarget>();
 
         var batches = GetBatches(predictableTargets, Settings.ComputingConfig.MaxDesiredPredictionTargetBatchSize);
         _logger.LogInformation($"Inputs split into {batches.Count} batches.");
@@ -428,7 +422,7 @@ public class ColabfoldMmseqsHelper
         await Task.Run(() => Helper.Touch(reporterFile));
     }
 
-    private async IAsyncEnumerable<ColabFoldMsaObject> AutoCreateColabfoldMsaObjectsAsync(List<PredictionTarget> predictions, MmseqsDbLocator locator)
+    private async IAsyncEnumerable<ColabFoldMsaObject> AutoCreateColabfoldMsaObjectsAsync(List<IProteinPredictionTarget> predictions, MmseqsDbLocator locator)
     {
         var targetsWithPairing = GetPredictionsThatRequirePairing(predictions);
 
@@ -527,7 +521,7 @@ public class ColabfoldMmseqsHelper
 
     }
 
-    private async Task<bool> CheckIsAcceptablePersistedA3mResultForTargetAsync(PredictionTarget target, string infoFilePath)
+    private async Task<bool> CheckIsAcceptablePersistedA3mResultForTargetAsync(IProteinPredictionTarget target, string infoFilePath)
     {
         var x = await ColabfoldMsaMetadataInfo.ReadFromFileSystemAsync(infoFilePath);
         if (x is null)
@@ -598,8 +592,8 @@ public class ColabfoldMmseqsHelper
     /// <param name="persistedMonoDatabasesPaths"></param>
     /// <param name="predictionBatch"></param>
     /// <returns></returns>
-    private async Task<(MmseqsDbLocator locator, List<PredictionTarget> feasiblePredictions)> CompileSourceMonoDbsFromPersistedAsync(
-        string workingDir, List<string> persistedMonoDatabasesPaths, List<PredictionTarget> predictionBatch)
+    private async Task<(MmseqsDbLocator locator, List<IProteinPredictionTarget> feasiblePredictions)> CompileSourceMonoDbsFromPersistedAsync(
+        string workingDir, List<string> persistedMonoDatabasesPaths, List<IProteinPredictionTarget> predictionBatch)
     {
         var dbProcessingBatchSize = Settings.ComputingConfig.ExistingDatabaseSearchParallelizationFactor;
 
@@ -614,7 +608,7 @@ public class ColabfoldMmseqsHelper
             await GetUsableAndMissingFeaturesAsync(persistedMonoDatabasesPaths, requiredFeatures, dbProcessingBatchSize);
 
         var unfeasibleMonos = missingFeatures.Select(x => x.Mono).ToList();
-        List<PredictionTarget> unfeasiblePredictions = new List<PredictionTarget>();
+        List<IProteinPredictionTarget> unfeasiblePredictions = new List<IProteinPredictionTarget>();
         if (missingFeatures.Any())
         {
             unfeasiblePredictions = predictionBatch
@@ -628,7 +622,7 @@ public class ColabfoldMmseqsHelper
             else
             {
                 _logger.LogWarning($"All require predicted mono features that are missing. Aborting batch.");
-                return (locator, new List<PredictionTarget>());
+                return (locator, new List<IProteinPredictionTarget>());
             }
         }
         
@@ -665,7 +659,7 @@ public class ColabfoldMmseqsHelper
             unfeasiblePredictions.ForEach(x=> locator.QdbIndicesMapping.Remove(x));
             if (!feasiblePredictions.Any())
             {
-                return (locator, new List<PredictionTarget>());
+                return (locator, new List<IProteinPredictionTarget>());
             }
 
             if (dbTarget.UseForPaired)
@@ -707,7 +701,7 @@ public class ColabfoldMmseqsHelper
 
     private async Task<Dictionary<Protein, byte[]>> GenerateProteinToMonoDataFragmentMappings(
         List<MmseqsPersistedMonoDbEntryFeature> featuresForThisSourceDb, MmseqsSourceDatabaseTarget dbTarget,
-        List<PredictionTarget> mutableFeasiblePredictions, List<PredictionTarget> mutableUnfeasiblePredictions, ColabfoldMsaDataType dataType)
+        List<IProteinPredictionTarget> mutableFeasiblePredictions, List<IProteinPredictionTarget> mutableUnfeasiblePredictions, ColabfoldMsaDataType dataType)
     {
         var dbProcessingBatchSize = Settings.ComputingConfig.ExistingDatabaseSearchParallelizationFactor;
 
@@ -744,9 +738,9 @@ public class ColabfoldMmseqsHelper
         return monoToFragmentMappings;
     }
 
-    private async Task<List<PredictionTarget>> GenerateA3msFromFastasGivenExistingMonoDbsAsync(string outputPath, List<string> realPersistedMonoDatabasesPaths, List<PredictionTarget> predictionBatch)
+    private async Task<List<IProteinPredictionTarget>> GenerateA3msFromFastasGivenExistingMonoDbsAsync(string outputPath, List<string> realPersistedMonoDatabasesPaths, List<IProteinPredictionTarget> predictionBatch)
     {
-        var resultList = new List<PredictionTarget>();
+        var resultList = new List<IProteinPredictionTarget>();
 
         var batchGuid = Guid.NewGuid();
         var batchId = batchGuid.ToString();
@@ -768,7 +762,7 @@ public class ColabfoldMmseqsHelper
         if (!feasiblePredictionTargets.Any())
         {
             _logger.LogWarning("All targets in the batch were unfeasible");
-            return new List<PredictionTarget>();
+            return new List<IProteinPredictionTarget>();
         }
         if (feasiblePredictionTargets.Count != predictionBatch.Count)
         {
@@ -1058,7 +1052,7 @@ public class ColabfoldMmseqsHelper
     }
 
     private MmseqsDatabaseObject GenerateDbObjectForPredictionBatch(
-        List<PredictionTarget> predictionBatch, Dictionary<Protein, byte[]> monoToDataFragmentMappings, MmseqsDbLocator locator, ColabfoldMsaDataType databaseType)
+        List<IProteinPredictionTarget> predictionBatch, Dictionary<Protein, byte[]> monoToDataFragmentMappings, MmseqsDbLocator locator, ColabfoldMsaDataType databaseType)
     {
         MmseqsDatabaseType mmseqsDbType;
 
@@ -1184,9 +1178,9 @@ public class ColabfoldMmseqsHelper
         return msaConvertResultDb;
     }
 
-    private Dictionary<PredictionTarget, List<int>> GeneratePredictionToIndexMapping(List<PredictionTarget> targets)
+    private Dictionary<IProteinPredictionTarget, List<int>> GeneratePredictionToIndexMapping(List<IProteinPredictionTarget> targets)
     {
-        var predictionTargetToDbIndicesMapping = new Dictionary<PredictionTarget, List<int>>();
+        var predictionTargetToDbIndicesMapping = new Dictionary<IProteinPredictionTarget, List<int>>();
         var generatedMonoIndex = 0;
 
         foreach (var predictionTarget in targets)
@@ -1204,7 +1198,7 @@ public class ColabfoldMmseqsHelper
         return predictionTargetToDbIndicesMapping;
     }
 
-    private MmseqsQueryDatabaseContainer GenerateQdbForPairing(List<PredictionTarget> targets, Dictionary<PredictionTarget, List<int>> targetToDbIndicesMapping)
+    private MmseqsQueryDatabaseContainer GenerateQdbForPairing(List<IProteinPredictionTarget> targets, Dictionary<IProteinPredictionTarget, List<int>> targetToDbIndicesMapping)
     {
         var mmseqsQueryDatabase = new MmseqsQueryDatabaseContainer();
 
@@ -1423,11 +1417,11 @@ public class ColabfoldMmseqsHelper
         return result;
     }
 
-    private async Task<List<(PredictionTarget target, string dbPath)>> GetPredictionTargetToExistingDbPathMappingAsync(
-        IEnumerable<PredictionTarget> targetPredictions, IEnumerable<string?> existingDatabaseLocations)
+    private async Task<List<(IProteinPredictionTarget target, string dbPath)>> GetPredictionTargetToExistingDbPathMappingAsync(
+        IEnumerable<IProteinPredictionTarget> targetPredictions, IEnumerable<string?> existingDatabaseLocations)
     {
-        var resultsLocationMappingToTest = new List<(PredictionTarget target, string subpath)>();
-        var targetToFullResultMapping = new List<(PredictionTarget target, string dbPath)>();
+        var resultsLocationMappingToTest = new List<(IProteinPredictionTarget target, string subpath)>();
+        var targetToFullResultMapping = new List<(IProteinPredictionTarget target, string dbPath)>();
 
         foreach (var targetPrediction in targetPredictions)
         {
@@ -1446,7 +1440,7 @@ public class ColabfoldMmseqsHelper
                 continue;
             }
 
-            List<(PredictionTarget target, string subpath)> locallyFeasibleMappings = new(resultsLocationMappingToTest);
+            List<(IProteinPredictionTarget target, string subpath)> locallyFeasibleMappings = new(resultsLocationMappingToTest);
 
             // progressively remove larger and larger groups based on test whether its cognate subfolder exists, instead of checking all one by one
             // this helps with nonexisting only
@@ -1480,7 +1474,7 @@ public class ColabfoldMmseqsHelper
 
             foreach (var batch in batches)
             {
-                var taskMapping = new List<(PredictionTarget target, Task<string?> task)>();
+                var taskMapping = new List<(IProteinPredictionTarget target, Task<string?> task)>();
                 foreach (var (target, subpath) in batch)
                 {
                     var expectedPredictionTargetResultsPath = Path.Join(location, subpath);
@@ -1510,8 +1504,8 @@ public class ColabfoldMmseqsHelper
         return targetToFullResultMapping;
     }
 
-    private async Task<(List<PredictionTarget> existing, List<PredictionTarget> missing)>
-        GetExistingAndMissingPredictionTargetsAsync(List<PredictionTarget> targetPredictions, IEnumerable<string> existingDatabaseLocations)
+    private async Task<(List<IProteinPredictionTarget> existing, List<IProteinPredictionTarget> missing)>
+        GetExistingAndMissingPredictionTargetsAsync(List<IProteinPredictionTarget> targetPredictions, IEnumerable<string> existingDatabaseLocations)
     {
         var mapping =
             await GetPredictionTargetToExistingDbPathMappingAsync(targetPredictions, existingDatabaseLocations);
@@ -1614,7 +1608,7 @@ public class ColabfoldMmseqsHelper
 
     }
 
-    private string GetMsaResultsSubFolderPathForPrediction(PredictionTarget target)
+    private string GetMsaResultsSubFolderPathForPrediction(IProteinPredictionTarget target)
     {
         var predictionHash = Helper.GetAutoHashIdWithoutMultiplicity(target);
 
@@ -1625,7 +1619,7 @@ public class ColabfoldMmseqsHelper
         return Path.Join(subPath, predictionHash);
     }
 
-    private List<PredictionTarget> GetPredictionsThatRequirePairing(List<PredictionTarget> targets)
+    private List<IProteinPredictionTarget> GetPredictionsThatRequirePairing(List<IProteinPredictionTarget> targets)
     {
         //TODO: add support for explicitly asking for no-pairing (possibly per target?)
         return targets.Where(x => x.IsHeteroComplex).ToList();
@@ -1649,16 +1643,16 @@ public class ColabfoldMmseqsHelper
     /// <param name="inputPathsList"></param>
     /// <param name="excludedIds"></param>
     /// <returns></returns>
-    private async Task<List<PredictionTarget>> GetRectifiedTargetPredictionsAsync(List<string> inputPathsList)
+    private async Task<List<IProteinPredictionTarget>> GetRectifiedTargetPredictionsAsync(List<string> inputPathsList)
     {
         var monos = new HashSet<Protein>();
 
         
 
-        var rectifiedTargets = new List<(string hash, PredictionTarget target)>();
-        var duplicateTargets = new List<PredictionTarget>();
+        var rectifiedTargets = new List<(string hash, IProteinPredictionTarget target)>();
+        var duplicateTargets = new List<IProteinPredictionTarget>();
 
-        var importer = new Importer();
+        IProteinPredictionTargetImporter importer = new HACK_ColabFoldPredictionTargetImporter();
 
         foreach (var inputFastaPath in inputPathsList)
         {
@@ -1670,7 +1664,7 @@ public class ColabfoldMmseqsHelper
                 foreach (var fastaEntry in fastaEntries)
                 {
                     var prediction =
-                        await importer.GetPredictionTargetFromComplexProteinFastaEntryAllowingMultimersAsync(fastaEntry, Settings.ColabfoldComplexFastaMonomerSeparator);
+                        await importer.GetPredictionTargetFromComplexProteinFastaEntry(fastaEntry, Settings.ColabfoldComplexFastaMonomerSeparator);
                     var rectifiedPrediction = Helper.GetStandardSortedPredictionTarget(prediction);
 
                     for (int i = 0; i < rectifiedPrediction.UniqueProteins.Count; i++)
@@ -1714,7 +1708,7 @@ public class ColabfoldMmseqsHelper
         return targets;
     }
 
-    private List<MmseqsPersistedMonoDbEntryFeature> GetRequiredMonoDbFeaturesForPredictions(List<PredictionTarget> predictionBatch)
+    private List<MmseqsPersistedMonoDbEntryFeature> GetRequiredMonoDbFeaturesForPredictions(List<IProteinPredictionTarget> predictionBatch)
     {
         var requiringPairing = GetPredictionsThatRequirePairing(predictionBatch);
         var notRequiringPairing = predictionBatch.Except(requiringPairing).ToList();
@@ -1792,7 +1786,7 @@ public class ColabfoldMmseqsHelper
     /// <param name="target"></param>
     /// <param name="fullPredictionPath"></param>
     /// <returns></returns>
-    private async Task<string?> GetResultFolderWithDesiredResultAsync(PredictionTarget target, string fullPredictionPath)
+    private async Task<string?> GetResultFolderWithDesiredResultAsync(IProteinPredictionTarget target, string fullPredictionPath)
     {
         if (!Directory.Exists(fullPredictionPath)) return null;
 
@@ -1813,7 +1807,7 @@ public class ColabfoldMmseqsHelper
     /// <param name="target"></param>
     /// <param name="fullPredictionPathToCheckForResults"></param>
     /// <returns></returns>
-    private async IAsyncEnumerable<string> GetResultFoldersWithDesiredResultAsync(PredictionTarget target, string fullPredictionPathToCheckForResults)
+    private async IAsyncEnumerable<string> GetResultFoldersWithDesiredResultAsync(IProteinPredictionTarget target, string fullPredictionPathToCheckForResults)
     {
         var subFolders = await Helper.GetDirectoriesAsync(fullPredictionPathToCheckForResults);
         if (!subFolders.Any()) yield break;
@@ -1930,14 +1924,14 @@ public class ColabfoldMmseqsHelper
         return (missingFeatures, usableFeatures);
     }
 
-    private List<(int numberOfMonomers, List<PredictionTarget> predictionTargets)> GroupPredictionsByNumberOfMonomers(List<PredictionTarget> targets)
+    private List<(int numberOfMonomers, List<IProteinPredictionTarget> predictionTargets)> GroupPredictionsByNumberOfMonomers(List<IProteinPredictionTarget> targets)
     {
-        var res = new Dictionary<int, List<PredictionTarget>>();
+        var res = new Dictionary<int, List<IProteinPredictionTarget>>();
 
         foreach (var predictionTarget in targets)
         {
             var monomerCount = predictionTarget.UniqueProteins.Count;
-            if (!res.ContainsKey(monomerCount)) res.Add(monomerCount, new List<PredictionTarget>());
+            if (!res.ContainsKey(monomerCount)) res.Add(monomerCount, new List<IProteinPredictionTarget>());
             res[monomerCount].Add(predictionTarget);
         }
 
@@ -2113,3 +2107,4 @@ public class ColabfoldMmseqsHelper
     }
 
 }
+

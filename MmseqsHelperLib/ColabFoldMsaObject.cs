@@ -1,24 +1,18 @@
-﻿using System.Net;
-using System.Net.NetworkInformation;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
-using AlphafoldPredictionLib;
+﻿using System.Text;
 using FastaHelperLib;
-using Microsoft.Extensions.Logging;
 
 namespace MmseqsHelperLib;
 
 public class ColabFoldMsaObject
 {
-    public ColabFoldMsaObject(List<AnnotatedMsaData> dataEntries, PredictionTarget predictionTarget)
+    public ColabFoldMsaObject(List<AnnotatedMsaData> dataEntries, IProteinPredictionTarget predictionTarget)
     {
         DataEntries = dataEntries;
         PredictionTarget = predictionTarget;
     }
 
     public List<AnnotatedMsaData> DataEntries { get; set; } = new ();
-    public PredictionTarget PredictionTarget { get; }
+    public IProteinPredictionTarget PredictionTarget { get; }
     private ColabfoldMsaMetadataInfo Metadata { get; set; }
     
     /// <summary>
@@ -32,7 +26,7 @@ public class ColabFoldMsaObject
     /// TODO: refactor this. Possibly just put it out of this? Or use extension method?
     public async Task WriteToFileSystemAsync(ColabfoldMmseqsHelperSettings settings, string targetFolder, ColabfoldHelperComputationInstanceInfo instanceInfo)
     {
-        Metadata = new ColabfoldMsaMetadataInfo(predictionTarget: PredictionTarget, createTime: DateTime.Now,
+        Metadata = new ColabfoldMsaMetadataInfo(predictionTarget: Helper.GetColabfoldPredictionTarget(PredictionTarget), createTime: DateTime.Now,
             computationInstanceInfo: instanceInfo, settings: settings);
 
         var fullMsaPath = Path.Join(targetFolder, settings.PersistedA3mDbConfig.ResultA3mFilename);
@@ -168,52 +162,5 @@ public class ColabFoldMsaObject
             yield return headerLine;
             yield return dataLine;
         }
-    }
-}
-
-public class ColabfoldHelperComputationInstanceInfo
-{
-    public string HelperDatabaseVersion { get; set; }
-    public string? MmseqsVersion { get; set; }
-    public string ComputerIdentifier { get; set; }
-    
-    public void InitalizeFromSettings(ColabfoldMmseqsHelperSettings settings)
-    {
-        ComputerIdentifier = GetComputerId(settings.ComputingConfig.TrackingConfig);
-    }
-
-    private string GetComputerId(TrackingStrategyConfiguration trackingStrategy)
-    {
-        string identifier;
-
-        try
-        {
-            switch (trackingStrategy.ComputerIdentifierSource)
-            {
-                case TrackingStrategyConfiguration.ComputerIdentifierSourceStrategy.None:
-                    identifier = string.Empty; break;
-                case TrackingStrategyConfiguration.ComputerIdentifierSourceStrategy.FirstNetworkInterface:
-                    var ni = NetworkInterface.GetAllNetworkInterfaces().First();
-                    var niId = ni.Id;
-                    identifier = niId.ToString();
-                    break;
-                case TrackingStrategyConfiguration.ComputerIdentifierSourceStrategy.HostName:
-                    var ipProperties = IPGlobalProperties.GetIPGlobalProperties();
-                    var fqdn = string.Format("{0}{1}", ipProperties.HostName, string.IsNullOrWhiteSpace(ipProperties.DomainName) ? "" : $".{ipProperties.DomainName}" );
-                    identifier = fqdn;
-                    ;
-                    break;
-                default:
-                    throw new NotImplementedException();
-            }
-        }
-        catch (Exception ex)
-        {
-            //_logger.LogInformation("Failed to get computer identification based on strategy, will use empty identifier.");
-            trackingStrategy.ComputerIdentifierSource = TrackingStrategyConfiguration.ComputerIdentifierSourceStrategy.None;
-            identifier = string.Empty;
-        }
-
-        return identifier;
     }
 }

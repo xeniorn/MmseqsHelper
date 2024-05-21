@@ -1,6 +1,4 @@
-﻿using AlphafoldPredictionLib;
-
-namespace MmseqsHelperLib;
+﻿namespace MmseqsHelperLib;
 
 internal class MmseqsDbLocator
 {
@@ -9,5 +7,5 @@ internal class MmseqsDbLocator
     public Dictionary<MmseqsSourceDatabaseTarget, string> PairedA3mDbPathMapping { get; } = new();
     public Dictionary<MmseqsSourceDatabaseTarget, string> PrePairingAlignDbPathMapping { get; } = new();
     //public Dictionary<MmseqsSourceDatabaseTarget, (string unpairedDbPath, string pairedDbPath)> DatabasePathMapping { get; } = new();
-    public Dictionary<PredictionTarget, List<int>> QdbIndicesMapping { get; set; } = new ();
+    public Dictionary<IProteinPredictionTarget, List<int>> QdbIndicesMapping { get; set; } = new ();
 }

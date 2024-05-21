@@ -24,14 +24,4 @@
         public string Description { get; }
         public IComparable Value { get; set; }
     }
-
-    public enum CommandLineFeature
-    {
-        MustHaveValue,
-        CanAcceptValueAfterWhiteSpace,
-        CanAcceptValueAfterEqualsSign,
-        Mandatory,
-        AffectsOnlyVerbosityOrSimilar,
-        CanAcceptValueWithoutSpacer
-    }
 }

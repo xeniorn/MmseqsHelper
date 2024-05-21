@@ -1,10 +1,6 @@
 ﻿using System.Diagnostics;
-using System.Net.WebSockets;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Xml;
-using AlphafoldPredictionLib;
 using FastaHelperLib;
 
 namespace MmseqsHelperLib;
@@ -159,7 +155,7 @@ public static partial class Helper
     private static bool HasWhitespace(string input) => input.Any(x => Char.IsWhiteSpace(x));
     private static bool IsQuoted(string input) => input.Length > 2 && input.First() == '"' && input.Last() == '"';
 
-    public static string GetAutoHashIdWithoutMultiplicity(PredictionTarget predictionTarget)
+    public static string GetAutoHashIdWithoutMultiplicity(IProteinPredictionTarget predictionTarget)
     {
         var standardSortedPredictionTarget = Helper.GetStandardSortedPredictionTarget(predictionTarget);
         var orderedSequences = standardSortedPredictionTarget.UniqueProteins.Select(x=>x.Sequence);
@@ -171,7 +167,7 @@ public static partial class Helper
         return hashId;
     }
 
-    public static PredictionTarget GetStandardSortedPredictionTarget(PredictionTarget predictionTarget)
+    public static IProteinPredictionTarget GetStandardSortedPredictionTarget(IProteinPredictionTarget predictionTarget)
     {
         var protWithCount = new List<(Protein protein, int multiplicity)>();
         for (var i = 0; i < predictionTarget.UniqueProteins.Count; i++)
@@ -185,7 +181,7 @@ public static partial class Helper
             .OrderByDescending(x=>x.protein.Sequence.Length)
             .ThenBy(x=>x.protein.Sequence).ToList();
 
-        var result = new PredictionTarget(userProvidedId: predictionTarget.UserProvidedId);
+        var result = new ColabfoldPredictionTarget(userProvidedId: predictionTarget.UserProvidedId);
 
         sorted.ForEach(x=> result.AppendProtein(x.protein, x.multiplicity));
         
@@ -213,7 +209,7 @@ public static partial class Helper
         await Task.Run(() => Directory.CreateDirectory(directory));
     }
 
-    public static string GetMultimerName(PredictionTarget pt)
+    public static string GetMultimerName(IProteinPredictionTarget pt)
     {
         try
         {
@@ -363,4 +359,18 @@ public static partial class Helper
 
         return res2;
     }
+
+    public static ColabfoldPredictionTarget GetColabfoldPredictionTarget(IProteinPredictionTarget predictionTarget)
+    {
+        return new ColabfoldPredictionTarget(
+            userProvidedId: predictionTarget.UserProvidedId,
+            multiplicities: new List<int>(predictionTarget.Multiplicities),
+            uniqueProteins: new List<Protein>(predictionTarget.UniqueProteins.Select(x => new Protein()
+            {
+                Id = x.Id,
+                Sequence = x.Sequence
+            }))
+        );
+    }
 }
+

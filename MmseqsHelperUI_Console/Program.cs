@@ -1,10 +1,7 @@
-﻿using System.Diagnostics;
-using System.Security.Cryptography.X509Certificates;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using MmseqsHelperUI_Console;
 
 namespace MmseqsHelperUI_Console;
 

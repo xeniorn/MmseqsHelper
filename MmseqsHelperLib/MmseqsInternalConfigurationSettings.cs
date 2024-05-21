@@ -1,6 +1,4 @@
-﻿using System.Text.Json;
-
-namespace MmseqsHelperLib;
+﻿namespace MmseqsHelperLib;
 
 public class MmseqsInternalConfigurationSettings
 {
