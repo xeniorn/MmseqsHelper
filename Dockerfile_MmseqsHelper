@@ -5,54 +5,14 @@
 ARG dotnet_target_runtime="linux-x64"
 ARG build_dir_absolute="/app/build"
 ARG publish_folder_absolute="/app/publish"
-ARG app_build_configuration=release
-ARG use_dotnet_self_contained=true
+ARG app_build_configuration="Release"
 
 ######################################################################################
-FROM mcr.microsoft.com/dotnet/sdk:7.0 AS build_base
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build_base
 
-RUN dotnet nuget add source --name myget_ja https://www.myget.org/F/flappy-bird/api/v3/index.json
-
-# fastalib is now a nuget package
-#######################################################################################
-#FROM build_base AS build_fastalib
-#
-#### local
-#ARG local_dir=/source/FastaHelperLib
-#ARG source_project=FastaHelperLib
-#
-#### inherited
-#ARG dotnet_target_runtime
-#ARG build_dir_absolute
-#ARG app_build_configuration
-#ARG use_dotnet_self_contained
-#
-#WORKDIR ${local_dir}
-#COPY ${source_project} ./
-#RUN dotnet restore -r ${dotnet_target_runtime}
-#RUN dotnet build -c ${app_build_configuration} -o ${build_dir_absolute} -r ${dotnet_target_runtime} --self-contained ${use_dotnet_self_contained} --no-restore
-#
-#
-######################################################################################
-FROM build_base AS build_afdesignerlib
-
-### local
-ARG local_dir=/source/AlphafoldPredictionLib
-ARG source_project=AlphafoldPredictionLib
-
-### inherited
-ARG dotnet_target_runtime
-ARG build_dir_absolute
-ARG app_build_configuration
-ARG use_dotnet_self_contained
-
-WORKDIR ${local_dir}
-COPY ${source_project} ./
-RUN dotnet restore -r ${dotnet_target_runtime}
-RUN dotnet build -c ${app_build_configuration} -o ${build_dir_absolute} -r ${dotnet_target_runtime} --self-contained ${use_dotnet_self_contained} --no-restore
 
 ######################################################################################
-FROM build_afdesignerlib AS build_mmseqslib
+FROM build_base AS build_mmseqslib
 
 ### local
 ARG local_dir=/source/MmseqsHelperLib
@@ -62,12 +22,11 @@ ARG source_project=MmseqsHelperLib
 ARG dotnet_target_runtime
 ARG build_dir_absolute
 ARG app_build_configuration
-ARG use_dotnet_self_contained
 
 WORKDIR ${local_dir}
 COPY ${source_project} ./
 RUN dotnet restore -r ${dotnet_target_runtime}
-RUN dotnet build -c ${app_build_configuration} -o ${build_dir_absolute} -r ${dotnet_target_runtime} --self-contained ${use_dotnet_self_contained} --no-restore
+RUN dotnet build -c ${app_build_configuration} -o ${build_dir_absolute} -r ${dotnet_target_runtime} --no-restore
 
 
 ######################################################################################
@@ -81,12 +40,11 @@ ARG source_project=MmseqsHelperUI_Console
 ARG dotnet_target_runtime
 ARG build_dir_absolute
 ARG app_build_configuration
-ARG use_dotnet_self_contained
 
 WORKDIR ${local_dir}
 COPY ${source_project} ./
 RUN dotnet restore -r ${dotnet_target_runtime}
-RUN dotnet build -c ${app_build_configuration} -o ${build_dir_absolute} -r ${dotnet_target_runtime} --self-contained ${use_dotnet_self_contained} --no-restore
+RUN dotnet build -c ${app_build_configuration} -o ${build_dir_absolute} -r ${dotnet_target_runtime} --self-contained --no-restore
 
 
 ######################################################################################
@@ -96,7 +54,6 @@ FROM build_mmseqscli as publish
 ARG dotnet_target_runtime
 ARG build_dir_absolute
 ARG app_build_configuration
-ARG use_dotnet_self_contained
 ARG publish_folder_absolute
 
 RUN dotnet publish --self-contained true --runtime ${dotnet_target_runtime}  -c ${app_build_configuration} -o ${publish_folder_absolute} --no-restore
