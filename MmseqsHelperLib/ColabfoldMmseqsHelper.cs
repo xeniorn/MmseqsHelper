@@ -2078,6 +2078,8 @@ public class ColabfoldMmseqsHelper
         };
         await Mmseqs.RunMmseqsAsync(Mmseqs.pairModule, pair2PosParams, $"{performanceParams}");
 
+
+        //TODO: isolate a3m generation from pairing. Likely it's more efficient to store mmseqs formatted pair results, I could maybe do just the conversion on the fly when fetching res?
         //*******************************************convert*******************************************************
         var msaConvertResultDb = Path.Join(localProcessingPath, $"pair_a3m");
         var msaConvertPosParams = new List<string>()
